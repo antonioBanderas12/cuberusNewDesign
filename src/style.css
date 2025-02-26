@@ -1,0 +1,375 @@
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: rgba(19, 2, 2, 0.87);
+  background-color: #242424;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  /* height: 100%;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center; */
+}
+
+
+
+a {
+  font-weight: 500;
+  color: #646cff;
+  text-decoration: inherit;
+}
+a:hover {
+  color: #535bf2;
+}
+
+h1 {
+  margin: 0;
+  padding: 0;
+}
+
+
+#app {
+  max-width: 1280px;
+  margin: 0 auto;
+  /* padding: 2rem; */
+  padding: 0;
+  text-align: center;
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
+
+
+
+
+
+
+
+
+
+
+/* resizer */
+#resizer {
+  width: 5px;
+  cursor: ew-resize;
+  background: #ccc;
+  position: relative;
+}
+
+
+/* containers */
+#container {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  justify-content: space-between;
+}
+/* 
+#container {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  justify-content: space-between;
+  margin: 0;
+  padding: 0;
+} */
+
+
+
+/* buttons */
+button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: #1a1a1a;
+  cursor: pointer;
+  transition: border-color 0.25s;
+}
+button:hover {
+  border-color: #646cff;
+}
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color: #213547;
+    background-color: #ffffff;
+  }
+  a:hover {
+    color: #747bff;
+  }
+  button {
+    background-color: #f9f9f9;
+  }
+}
+
+
+
+
+/* pdf */
+#pdf-container, #threejs-container {
+  height: 100%;
+  position: relative
+}
+
+#pdf-container {
+  position: relative;
+  width: 50%;
+  overflow: auto;
+  background: black;
+  padding: 20px;
+  scrollbar-width: none;
+}
+
+#pdf-container::-webkit-scrollbar {
+  display: none;
+}
+
+
+
+
+#pdf-buttons {
+  position: absolute;
+  /* position: sticky; */
+  top: 10px; /* Adjust as needed */
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 20px;
+  z-index: 100;
+  /* background: rgba(0, 0, 0, 0.5); */
+  padding: 10px;
+  border-radius: 10px;
+}
+
+#pdf-buttons button {
+  padding: 10px 20px;
+  border: none;
+  cursor: pointer;
+  border: 1px solid #ccc;
+    transition: transform 0.3s ease, border-color 0.3s;
+}
+
+#pdf-buttons button:hover {
+  transform: scale(1.1);
+  border-color: #F7E0C0;
+
+}
+
+
+
+
+#pdfFile {
+  display: none; /* Hide the default file input */
+}
+
+.custom-file-upload {
+  display: inline-block;
+  padding: 10px 20px;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: #1a1a1a;
+  color: white;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid #ccc;
+    transition: transform 0.3s ease, border-color 0.3s;
+}
+
+.custom-file-upload:hover {
+  transform: scale(1.1);
+  border-color: #F7E0C0;}
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* three.js */
+#threejs-container {
+  width: 50%;
+  background: black;
+  position: relative; /* Ensures child absolute elements are positioned within this container */
+  overflow: hidden;
+}
+
+#explore {
+  display: none; /* Initially hidden */
+  top: calc(20px + 40px); /* Adjust as per the roll buttons height */
+  left: 50%;
+  transform: translateX(-50%);
+  transition: top 0.3s ease; /* Smooth transition */
+}
+
+
+/* 
+
+.current {
+
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: #1a1a1a;
+  cursor: pointer;
+  transition: border-color 0.25s;
+} */
+
+
+.overlay {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 10%; /* Adjust height to fit the half-circle */
+  background-color: rgba(0, 0, 0, 0); /* Transparent overlay */
+  display: flex;
+  justify-content: center;
+  align-items: flex-end; /* Align to the bottom of the screen */
+  z-index: 1000;
+  /* opacity: 0.1; */
+}
+
+
+.group-selection {
+  position: fixed; /* Fix the element at the bottom of the screen */
+  bottom: 0; /* Align it at the bottom */
+  left: 50%; /* Center it horizontally */
+  transform: translateX(-50%); /* Ensure it’s perfectly centered */
+  background-color: rgba(251, 240, 240, 0); /* Set your desired background color */
+  padding: 40px 0; /* Adjust the vertical padding to suit your design */
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  gap: 40px;
+  width: 80%; /* Control the width of the half-circle */
+  border-radius: 2500% 2500% 0 0; /* Round only the top edges */
+  overflow: hidden; /* Ensure content stays within the shape */
+  z-index: 1000; /* Ensure the osverlay appears on top */
+}
+
+
+.group-selection button {
+  padding: 10px 20px;
+  background-color: white;
+  color: black;
+  border: none;
+  cursor: pointer;
+  border-radius: 20px;
+  transition: transform 0.3s ease, background-color 0.3s;
+
+}
+
+.group-selection button:hover {
+  background-color: #F7E0C0;
+  transform: scale(1.5);
+  
+}
+
+
+
+
+
+#roll-buttons-container {
+  position: absolute;
+  top: 10px; /* Adjust as needed */
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 20px;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 10px;
+  border-radius: 10px;
+}
+
+#roll-buttons-container button {
+  padding: 10px 20px;
+  border: none;
+  cursor: pointer;
+  border: 1px solid #ccc;
+    transition: transform 0.3s ease, border-color 0.3s;
+}
+
+#roll-buttons-container button:hover {
+  /* background-color: #F7E0C0; */
+  transform: scale(1.1);
+  border-color: #F7E0C0;
+
+}
+
+
+
+
+#description-container {
+  position: fixed;
+  /* position: absolute; */
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  font-family: 'Courier Prime', monospace;
+  text-align: center;
+  display: none; /* Initially hidden */
+}
+
+
+
+
+#loading-spinner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 50px;
+  height: 50px;
+  border: 5px solid #ccc;
+  border-top: 5px solid #000;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  transform: translate(-50%, -50%);
+  display: none;
+}
+
+@keyframes spin {
+  0% { transform: translate(-50%, -50%) rotate(0deg); }
+  100% { transform: translate(-50%, -50%) rotate(360deg); }
+}

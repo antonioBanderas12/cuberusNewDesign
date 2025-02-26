@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>i1</title>
+  </head>
+  <body>
+    <div id="app"></div>
+
+      <div id="container">
+        <div id="pdf-container">
+          <div id="pdf-buttons">
+            <label for="pdfFile" class="custom-file-upload">upload_pdf</label>
+            <input type="file" id="pdfFile" accept="application/pdf">
+            <button id="summary" onclick="fetchSummary()">summarize</button>
+          </div>
+        </div>
+        
+        <div id="resizer"></div>
+        
+        <div id="threejs-container">
+            <div id="loading-spinner"></div>
+            <!-- rolling the dice -->
+            <div id="roll-buttons-container">
+              <button id="structure" class="roll">hierarchies</button>
+              <button id="relations" class="roll">dynamics</button>
+              <button id="themes" class="roll">themes</button>
+              <button id="sequence" class="roll">sequence</button>
+              <button id="latent" class="roll">latent</button>
+            </div>    
+
+            <!-- description container -->
+            <div id="description-container"></div>
+        </div>
+      </div>
+
+    <!-- clicked object info -->
+    <!-- <div id="clicked-cube-info" style="position: fixed; top: 60px; right: 20px; z-index: 10;" class = "current"> None </div> -->
+    
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
