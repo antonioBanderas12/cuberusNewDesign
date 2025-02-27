@@ -35,7 +35,7 @@ const prompt = (text) => {
   
   Try to not assign many statuses, but rateher give the same status to several entities.
 
-  An object can have several parents. Try to use the given entities as parents. A tree-like structure over several levels should emerge.
+  An object can have several parents. Try to use the given entities as parents. A tree-like structure over several levels should emerge. Make sure parent-child relations are tracked over more than 2 generations.
   
   Here is an example so you have an idea, how the form could look like:
   "[
@@ -66,11 +66,11 @@ Ensure output is a valid JSON. Do not include extra text.
 
 async function extractDeep(text) {
   try {
-    console.log("Step 3a: Fetching entity extraction from LLM");
+    console.log("Step 1: entity extraction");
     const response = await axios.post('http://localhost:11434/api/generate', {
       model: 'deepseek-r1:7b',
       prompt: prompt(text),
-      stream: true,
+      stream: false,
       temperature: 0.1
     });
    
@@ -104,7 +104,7 @@ Ensure the output is valid JSON.`;
 
 async function extractSequence(text, ent) {
   try {
-    console.log("Step 3b: Fetching sequences");
+    console.log("Step s: Fetching sequences");
     const response = await axios.post('http://localhost:11434/api/generate', {
       model: 'deepseek-r1:7b',
       prompt: seqPrompt(text, ent),
@@ -121,7 +121,7 @@ async function extractSequence(text, ent) {
     // // const sequ = sanitizeJSON(jsonText);
     // const sequences = JSON.parse(jsonText);
     
-    console.log("Extracted sequences:", sequences);
+    console.log("cleaned sequences:", sequences);
     return sequences;
   } catch (error) {
     console.error('Error during entity extraction:', error);
@@ -174,9 +174,6 @@ function parseEntities(responseText) {
     .replace(/\n/g, ''); // Remove newlines
 
 
-
-    console.log("san: ", sanitizedString)
-
   try {
     const parsed = JSON.parse(sanitizedString);
     return Array.isArray(parsed) ? parsed : [parsed];
@@ -189,65 +186,10 @@ function parseEntities(responseText) {
 
 
 
-
-
-// function parseEntities(responseText){
-//     try {
-//         // Remove any text before the first '[' and after the last ']'
-//         const jsonString = responseText.replace(/^[^[]*/, '').replace(/][^]*$/, ']');
-        
-//         // Remove newlines and extra spaces, and escape special characters
-//         const sanitizedString = jsonString
-//             .replace(/\s+/g, ' ') // Replace multiple whitespace with a single space
-//             .replace(/\\'/g, "'") // Replace escaped single quotes
-//             .replace(/\\"/g, '"') // Replace escaped double quotes
-//             .replace(/\n/g, '') // Remove newlines
-//             .replace(/\r/g, '') // Remove carriage returns
-//             .replace(/\t/g, ''); // Remove tabs
-        
-// console.log("san: ", sanitizeJSON)
-
-//         // Parse the sanitized JSON string
-//         const parsed = JSON.parse(sanitizedString);
-        
-//         // Ensure the result is an array
-//         return Array.isArray(parsed) ? parsed : [parsed];
-//     } catch (error) {
-//         console.error("Error parsing entities:", error);
-//         console.log("Problematic response:", responseText);
-//         return []; // Return empty array to prevent crashes
-//     }
-
-// };
-
-
-
-function sanitizeJSON(responseText) {
-  try {
-      // Remove anything before the first '[' to get a valid JSON structure
-      const jsonStartIndex = responseText.indexOf("[");
-      if (jsonStartIndex === -1) throw new Error("No JSON found in response");
-
-      const jsonText = responseText.slice(jsonStartIndex).trim();
-      
-      return JSON.parse(jsonText);
-  } catch (error) {
-      console.error("Error parsing JSON:", error);
-      throw new Error("Failed to parse JSON");
-  }
-}
-
-
-
-
-
-
-
 //main
 app.post('/process-text', async (req, res) => {
   console.log(`New request received at ${new Date().toISOString()}`);
   try {
-    console.log("===== New Request Received =====");
     const { text } = req.body;
     if (!text) {
       return res.status(400).json({ error: 'Text input is required' });
@@ -256,31 +198,59 @@ app.post('/process-text', async (req, res) => {
     //preprocess
     const cleanedText = preprocessText(text);
 
-
-    //console.log("Calling extractDeep with text:", cleanedText);
     //fetch entities
     const entities = await extractDeep(cleanedText);
 
-
-    console.log("Calling extractSequence with entities:", entities);
     //fetch sequences
     const sequence = await extractSequence(cleanedText, entities)
 
 
-    console.log(entities)
-    console.log(sequence)
-
-
     //merge
-    const entityMap = Object.fromEntries(entities.map(e => [e.name, { ...e, sequence: null }]));
-    sequence.forEach(seq => {
-      for (let i = 0; i < seq.length - 1; i++) {
-        if (entityMap[seq[i]]) {
-          entityMap[seq[i]].sequence = entityMap[seq[i]].sequence || [];
-          entityMap[seq[i]].sequence.push(seq[i + 1]);
-        }
+   // const entityMap = Object.fromEntries(entities.map(e => [e.name, { ...e, sequence: null }]));
+   // sequence.forEach(seq => {
+     // for (let i = 0; i < seq.length - 1; i++) {
+       // if (entityMap[seq[i]]) {
+         // entityMap[seq[i]].sequence = entityMap[seq[i]].sequence || [];
+          //entityMap[seq[i]].sequence.push(seq[i + 1]);
+        //}
+      //}
+    //});
+
+
+
+    // Ensure the sequence is always an array of arrays
+const correctedSequences = sequence.map(seq => {
+  // If the sequence is not already an array of arrays (i.e., just a flat array), wrap it in an array
+  if (Array.isArray(seq)) {
+    return seq; // It's already in the correct format
+  } else {
+    return [seq]; // Wrap it into an array
+  }
+});
+
+// Now we can process the corrected sequences
+const entityMap = Object.fromEntries(entities.map(e => [e.name, { ...e, sequence: null }])); // Initialize the entity map with no sequences
+
+correctedSequences.forEach(seq => {
+  // Ensure the sequence has at least one entity
+  for (let i = 0; i < seq.length; i++) {
+    const currentEntity = entityMap[seq[i]];
+    
+    // If the current entity exists in the entity map, initialize its sequence array
+    if (currentEntity) {
+      currentEntity.sequence = currentEntity.sequence || []; // Ensure sequence is initialized
+
+      // If there is a next element in the sequence, add it
+      if (i < seq.length - 1) {
+        currentEntity.sequence.push(seq[i + 1]);
       }
-    });
+    }
+  }
+});
+
+// After the loop, you can log the updated entity map for verification
+console.log("Updated Entity Map with Sequences:", entityMap);
+
 
 
 

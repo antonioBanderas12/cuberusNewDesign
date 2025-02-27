@@ -196,6 +196,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 
 let stringifiedData = null;
 
+
+
+
+
+
+
+
 async function fetchSummary() {
   const fileInput = document.getElementById('pdfFile');
   const file = fileInput.files[0];
@@ -265,6 +272,8 @@ async function fetchSummary() {
     reader.readAsArrayBuffer(file);
   });
 }
+
+
 window.fetchSummary = fetchSummary;
 
 
@@ -384,15 +393,14 @@ function initializeThreeJS(boxDataList){
   
 
   // bigCube
-    // const bigCubeSize = 150; // Size of the big cube
-    // const bigCubeGeometry = new THREE.BoxGeometry(bigCubeSize, bigCubeSize, bigCubeSize);
-    // const bigCubeMaterial = new THREE.MeshBasicMaterial({ color: 0x555555, wireframe: true, transparent: true, opacity: 0 });
-    // const bigCube = new THREE.Mesh(bigCubeGeometry, bigCubeMaterial);
-    // scene.add(bigCube);  
+   // const bigCubeSize = 150; // Size of the big cube
+    //const bigCubeGeometry = new THREE.BoxGeometry(bigCubeSize, bigCubeSize, bigCubeSize);
+    //const bigCubeMaterial = new THREE.MeshBasicMaterial({ color: 0x555555, wireframe: true, transparent: true, opacity: 0 });
+    //const bigCube = new THREE.Mesh(bigCubeGeometry, bigCubeMaterial);
+    //scene.add(bigCube);  
 
     let bigCubeSize = 150; // Size of the big cube
     let bigCubeSizeSIM = 150;
-
 
 
 
@@ -1083,7 +1091,7 @@ function changeMode() {
 
 
   if (mode === structure) {
-    targetPosition.z +=  1.5* bigCubeSize;
+    targetPosition.z +=  1.8* bigCubeSize;
     rot.set(0, 0, 0); // 90 degrees in radians
 
     let hiddenBoxes = boxes.filter(box => !box.visible);
@@ -1101,6 +1109,7 @@ function changeMode() {
       scene.getObjectByName('bigCubeMesh').position.set(0,0,-10);
       scene.getObjectByName('bigCubeMesh').visible = true;
     }, 1500)
+
 
   }
 
@@ -1122,10 +1131,9 @@ function changeMode() {
 
     scene.getObjectByName('bigCubeMesh').visible = false;
     setTimeout(() => {
-      scene.getObjectByName('bigCubeMesh').position.set(9,0,0);
+      scene.getObjectByName('bigCubeMesh').position.set(10,0,0);
       scene.getObjectByName('bigCubeMesh').visible = true;
     }, 1500)
-
   }
 
   if (mode === themes) {
@@ -1184,7 +1192,6 @@ function changeMode() {
     });
 
     manNavigation();
-
 
     scene.getObjectByName('bigCubeMesh').visible = false;
     setTimeout(() => {
@@ -2592,6 +2599,12 @@ function updateBoundingBoxes() {
 
 
 
+
+
+
+
+
+
 //simulations
 
 function structureSimulation() {
@@ -2698,66 +2711,13 @@ function structureSimulation() {
 
 
 function relationsSimulation() {
-  let face = -(bigCubeSize / 2);
 
-  let minX = Infinity, maxX = -Infinity;
-  let minY = Infinity, maxY = -Infinity;
-  let minZ = Infinity, maxZ = -Infinity;
-
-  // Rotate cubes
-  boxes.forEach(cube => {
-    cube.rotation.set(0, -(Math.PI / 2), 0);
-    cube.userData.boundBox.rotation.set(0, -(Math.PI / 2), 0);
-  });
-
-  // Extract text descriptions for PCA
-  let corpus = boxes.map(box => {
-    let allWords = [];
-    if (box.userData.relations) {
-      box.userData.relations.forEach(([rel, description]) => {
-        allWords = [...allWords, ...description.split(" ")];
-      });
-    }
-    return allWords.filter(Boolean);
-  });
-
-  // Perform PCA analysis
-  let pcaPositions = pcaText(corpus);
-
-  // Scale PCA positions
-  pcaPositions.forEach(pos => {
-    pos.x *= 1.5;
-    pos.y *= 1.5;
-  });
-
-  // Adjust for relations layout
-  let adjustedPositions = adjustPos(pcaPositions, "relations");
-
-  // Prevent overlap
-  let finalPositions = overlapPrevention(adjustedPositions);
-
-finalPositions.forEach(pos => {
-  if (Number.isNaN(pos.x) || Number.isNaN(pos.y)) {
-      console.warn("Invalid position detected:", pos);
-      return; // Skip this entry
-  }
-
-  minX = Math.min(minX, pos.x);
-  maxX = Math.max(maxX, pos.x);
-  minY = Math.min(minY, pos.y);
-  maxY = Math.max(maxY, pos.y);
-});
-
-
-  const result = new THREE.Vector3(
-    maxX - minX,
-    maxY - minY,
-    maxZ - minZ
-  );
-  
+let result = new THREE.Vector3(0, 0, 0);
   return result;
 
 }
+
+
 
 function themesSimulation() {
 
@@ -3007,69 +2967,8 @@ function sequenceSimulation() {
 
 function latentSimulation() {
     
-
-
-  let minX = Infinity, maxX = -Infinity;
-  let minY = Infinity, maxY = -Infinity;
-  let minZ = Infinity, maxZ = -Infinity;
-
-  
-  boxes.forEach(cube => {
-    cube.rotation.set(0, Math.PI / 2, 0);
-    cube.userData.boundBox.rotation.set(0, Math.PI, 0);
-  });
-
-
-  let corpus = boxes.map(box => {
-    let allWords = [
-      ...box.userData.description.split(" "),];
-    
-    if (box.userData.relations) {
-      box.userData.relations.forEach(([rel, description]) => {
-        allWords = [...allWords, ...description.split(" ")];
-      });
-    }
-    return allWords.filter(Boolean); // Remove empty entries
-  });
-
-
-
-  let pcaPositions = pcaText(corpus);
-
-  pcaPositions.forEach(pos => {
-    pos.x = pos.x * 1.5;
-    pos.y = pos.y * 1.5;
-  })
-
-  let relPositions = adjustPos(pcaPositions, "relations");
-  let parentsPositions = adjustPos(relPositions, "parents");
- // let childrenPositions = adjustPos(parentsPositions, "children");
-
-
-
-
-  let finalPositions = overlapPrevention(parentsPositions);
-
-  finalPositions.forEach(pos => {
-    if (Number.isNaN(pos.x) || Number.isNaN(pos.y)) {
-        console.warn("Invalid position detected:", pos);
-        return; // Skip this entry
-    }
-  
-    minX = Math.min(minX, pos.x);
-    maxX = Math.max(maxX, pos.x);
-    minY = Math.min(minY, pos.y);
-    maxY = Math.max(maxY, pos.y);
-  });
-  
-  
-    const result = new THREE.Vector3(
-      maxX - minX,
-      maxY - minY,
-      maxZ - minZ
-    );
-    
-
+  let result = new THREE.Vector3(0, 0, 0);
+  return result;
   return result;
 
 }
@@ -3155,6 +3054,11 @@ function adjustBigCubeSize(){
     scene.add(bigCubeMesh);
 
  };
+
+
+
+
+
 
 
 
@@ -3295,7 +3199,7 @@ boxDataList.forEach(data => {
 });
 processAllBoxes(boxesData);
 setTimeout(() => {
-  
+ 
   adjustBigCubeSize()
   changeMode();
   structurePos();
