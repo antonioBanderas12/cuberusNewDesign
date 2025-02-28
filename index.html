@@ -9,16 +9,18 @@
   <body>
     <div id="app"></div>
 
+
       <div id="container">
         <div id="pdf-container">
           <div id="pdf-buttons">
             <label for="pdfFile" class="custom-file-upload">upload_pdf</label>
             <input type="file" id="pdfFile" accept="application/pdf">
-            <button id="summary" onclick="fetchSummary()">summarize</button>
           </div>
         </div>
         
         <div id="resizer"></div>
+        <button id="summary" onclick="fetchSummary()">summarize</button>
+
         
         <div id="threejs-container">
             <div id="loading-spinner"></div>
@@ -29,7 +31,8 @@
               <button id="themes" class="roll">themes</button>
               <button id="sequence" class="roll">sequence</button>
               <button id="latent" class="roll">latent</button>
-            </div>    
+            </div>
+
 
             <!-- description container -->
             <div id="description-container"></div>

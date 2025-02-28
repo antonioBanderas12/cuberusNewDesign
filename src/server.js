@@ -30,16 +30,20 @@ const preprocessText = (text) => {
 
 
 //elements
-const prompt = (text) => {
-  return `This is the text: ${text}. I want a summary of the text as an arraylist back in the following form. Do not write any additional text, just give me the arraylist: I want you to extend and enhance this list with contents from the article. Here are the descriptions of the attributes: [entity name; entity description; status or group of the entity; references to one or more other entities created that resemble superordinate concepts or entities like a parent-child relationship or a whole-part relationship,where always the bigger or superordinate is represented; a list of tuples that consist of one reference to another created entity and a matching description where dynamics and relationships that are not hierarchical should be described for example the way one entity changes another one].
-  
-  Try to not assign many statuses, but rateher give the same status to several entities.
+const prompt = (text, inputWord) => {
+  return `This is the text: ${text}. Extract relevant entities connected to ${inputWord} in JSON format. For each entity as well as for ${inputWord}, provide:
+   
+    name: The entity's name.
+    description: A short definition or explanation.
+    status: Its category or classification.
+    parents: A list of superordinate concepts (e.g., broader categories or whole-part relationships).
+    relations: A list of tuples describing non-hierarchical relationships with other entities (e.g., influences, dependencies).
 
-  An object can have several parents. Try to use the given entities as parents. A tree-like structure over several levels should emerge. Make sure parent-child relations are tracked over more than 2 generations.
-  
-  Here is an example so you have an idea, how the form could look like:
-  "[
-      {
+    Here is an example so you have an idea, how the form could look like:
+        
+      "[
+        {
+          [
           "name": "car",
           "description": "A wheeled motor vehicle used for transportation, typically powered by an internal combustion engine or an electric motor, designed to carry a small number of passengers.",
           "status": "transportation mode",
@@ -49,12 +53,10 @@ const prompt = (text) => {
               ["hybrid_car", "Uses both traditional and electric propulsion systems"],
               ["autonomous_vehicle", "Can function independently without a human driver"]
           ]
-  }
-]"
+        }
+      ]"
 
-Give at least 15 different entities.
-
-Ensure output is a valid JSON. Do not include extra text.
+    Ensure output is a valid JSON. Do not include extra text.
 
 `}
 
@@ -64,17 +66,17 @@ Ensure output is a valid JSON. Do not include extra text.
   
 //reference to elements that follows sequenmtially
 
-async function extractDeep(text) {
+async function extractDeep(text, inputWord) {
   try {
-    console.log("Step 1: entity extraction");
+    console.log("contextualising text...");
     const response = await axios.post('http://localhost:11434/api/generate', {
       model: 'deepseek-r1:7b',
-      prompt: prompt(text),
+      prompt: prompt(text, inputWord),
       stream: false,
       temperature: 0.1
     });
    
-    console.log("extracted entities", response.data.response)
+    console.log("extracted:", response.data.response)
 
     const entities = parseEntities(response.data.response);
     return entities;
@@ -95,6 +97,7 @@ Each sequence should be a logical progression of related entities, where one fol
 Return only a valid JSON array of arrays, without any extra text:  
 [
   ["entity1", "entity2", "entity3"],
+  ["entity1", "entity5", "entity3"],
   ["entity4", "entity5", "entity6"]
 ]
 
@@ -132,9 +135,8 @@ async function extractSequence(text, ent) {
 
 
 
-
 function parseEntities(responseText) {
-  // Find the first '[' character
+  // Find the first '[' character, indicating the start of a JSON array
   const startIndex = responseText.indexOf('[');
   if (startIndex === -1) {
     console.error("No JSON array found in response.");
@@ -166,14 +168,23 @@ function parseEntities(responseText) {
   const jsonString = responseText.substring(startIndex, endIndex + 1).trim();
 
   // Optionally, remove unwanted escapes or whitespace issues
-  const sanitizedString = jsonString
-    .replace(/\s+/g, ' ')
-    .replace(/\\'/g, "'")
-    .replace(/\\"/g, '"')
-    .replace(/<\/?think>/gi, '')
-    .replace(/\n/g, ''); // Remove newlines
+  let sanitizedString = jsonString
+    .replace(/\s+/g, ' ')  // Normalize whitespace
+    .replace(/\\'/g, "'")  // Unescape single quotes
+    .replace(/\\"/g, '"')  // Unescape double quotes
+    .replace(/<\/?think>/gi, '') // Remove any `<think>` tags if present
+    .replace(/\n/g, '');  // Remove newlines
 
+  // Check for common issues in the JSON structure
+  // 1. Missing commas
+  sanitizedString = sanitizedString.replace(/}\s*{/g, '}, {'); // Fix missing commas between objects
+  // 2. Trailing commas (e.g., after the last item in an array)
+  sanitizedString = sanitizedString.replace(/,(\s*[\}\]])/g, '$1'); // Remove trailing commas
 
+  // 3. Fix malformed entity values (for example, strings that aren't properly quoted)
+  sanitizedString = sanitizedString.replace(/(\w+):\s*([\w\s]+)/g, '"$1": "$2"'); // Ensuring keys and values are quoted correctly
+
+  // Try to parse the JSON string
   try {
     const parsed = JSON.parse(sanitizedString);
     return Array.isArray(parsed) ? parsed : [parsed];
@@ -189,86 +200,43 @@ function parseEntities(responseText) {
 //main
 app.post('/process-text', async (req, res) => {
   console.log(`New request received at ${new Date().toISOString()}`);
+
   try {
-    const { text } = req.body;
-    if (!text) {
-      return res.status(400).json({ error: 'Text input is required' });
+    const { text, selectedInput } = req.body;
+    if (!text || !selectedInput) {
+      return res.status(400).json({ error: 'Text and Input Word are required' });
     }
 
-    //preprocess
-    const cleanedText = preprocessText(text);
-
-    //fetch entities
-    const entities = await extractDeep(cleanedText);
-
-    //fetch sequences
-    const sequence = await extractSequence(cleanedText, entities)
-
-
-    //merge
-   // const entityMap = Object.fromEntries(entities.map(e => [e.name, { ...e, sequence: null }]));
-   // sequence.forEach(seq => {
-     // for (let i = 0; i < seq.length - 1; i++) {
-       // if (entityMap[seq[i]]) {
-         // entityMap[seq[i]].sequence = entityMap[seq[i]].sequence || [];
-          //entityMap[seq[i]].sequence.push(seq[i + 1]);
-        //}
-      //}
-    //});
-
-
-
-    // Ensure the sequence is always an array of arrays
-const correctedSequences = sequence.map(seq => {
-  // If the sequence is not already an array of arrays (i.e., just a flat array), wrap it in an array
-  if (Array.isArray(seq)) {
-    return seq; // It's already in the correct format
-  } else {
-    return [seq]; // Wrap it into an array
-  }
-});
-
-// Now we can process the corrected sequences
-const entityMap = Object.fromEntries(entities.map(e => [e.name, { ...e, sequence: null }])); // Initialize the entity map with no sequences
-
-correctedSequences.forEach(seq => {
-  // Ensure the sequence has at least one entity
-  for (let i = 0; i < seq.length; i++) {
-    const currentEntity = entityMap[seq[i]];
+    let cleanedText = preprocessText(text);
+    const contextualised = await extractDeep(cleanedText, selectedInput);
     
-    // If the current entity exists in the entity map, initialize its sequence array
-    if (currentEntity) {
-      currentEntity.sequence = currentEntity.sequence || []; // Ensure sequence is initialized
-
-      // If there is a next element in the sequence, add it
-      if (i < seq.length - 1) {
-        currentEntity.sequence.push(seq[i + 1]);
-      }
+    if (!Array.isArray(contextualised) || contextualised.length === 0) {
+      throw new Error('Invalid LLM response format');
     }
-  }
-});
 
-// After the loop, you can log the updated entity map for verification
-console.log("Updated Entity Map with Sequences:", entityMap);
+    // Extract sequence
+    const sequences = await extractSequence(cleanedText, contextualised);
+    if (Array.isArray(sequences) && sequences.length > 0) {
+      sequences.forEach(seq => {
+        for (let i = 0; i < seq.length - 1; i++) {
+          const currentEntity = contextualised.find(e => e.name === seq[i]);
+          const nextEntity = contextualised.find(e => e.name === seq[i + 1]);
 
+          if (currentEntity) {
+            currentEntity.sequence = currentEntity.sequence || [];
+            currentEntity.sequence.push(nextEntity ? nextEntity.name : null);
+          }
+        }
+      });
+    }
 
-
-
-
-    //finale
-    const updatedEntities = Object.values(entityMap);
-    console.log("Final response prepared:", updatedEntities);
-
-    res.json(updatedEntities);
-
+    // Return only the array of entities
+    res.json(contextualised);
   } catch (error) {
-    console.error('Error during text processing:', error);
-    res.status(500).json({ error: 'Processing failed' });
+    console.error("Error processing request:", error);
+    res.status(500).json({ error: 'Internal Server Error', details: error.message });
   }
 });
-
-
-
 
 
 

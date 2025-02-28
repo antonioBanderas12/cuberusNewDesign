@@ -8,8 +8,11 @@ import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry';
 import { FontLoader } from 'three/examples/jsm/loaders/FontLoader';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry';
 import OpenAI from "openai";
+
+
 import * as pdfjsLib from 'pdfjs-dist';
-import 'pdfjs-dist/build/pdf.worker.min.mjs';
+
+
 import { PCA } from 'ml-pca';
 
 
@@ -33,6 +36,10 @@ function resize(event) {
     let newWidth = event.clientX / window.innerWidth * 100; // Adjust based on clientX
     leftPanel.style.width = `${newWidth}%`;
     rightPanel.style.width = `${100 - newWidth}%`;
+
+    const resizerRect = resizer.getBoundingClientRect();
+    document.getElementById("summary").style.left= `${resizerRect.left}px`;
+
 
     // Update canvas size and camera aspect ratio
     const rightPanelWidth = rightPanel.offsetWidth;
@@ -91,8 +98,10 @@ window.addEventListener('resize', () => {
 
 
 //pdf
-let currentScale = 1.5; // Default zoom level
+let currentScale = 2; // Default zoom level
 let currentPDF = null;
+let selectedInput = '';
+
 document.getElementById('pdfFile').addEventListener('change', function (event) {
     const file = event.target.files[0];
     if (file) {
@@ -108,80 +117,134 @@ document.getElementById('pdfFile').addEventListener('change', function (event) {
     }
 });
 
+
+
+
+
+
 function renderPDF() {
-    if (!currentPDF) return;
+  if (!currentPDF) return;
 
-    const container = document.getElementById('pdf-container');
-    const buttonsContainer = document.getElementById('pdf-buttons');
+  const container = document.getElementById('pdf-container');
 
-    if (!container.contains(buttonsContainer)) {
-      container.appendChild(buttonsContainer); // Add only if missing
+  // Preserve buttons while clearing PDF pages
+  const buttonsContainer = document.getElementById('pdf-buttons');
+  if (!container.contains(buttonsContainer)) {
+      container.appendChild(buttonsContainer);
   }
 
-  container.querySelectorAll('canvas').forEach(canvas => canvas.remove());
-    // container.innerHTML = ''; // Clear previous content
-    // container.appendChild(buttonsContainer); // Re-add buttons
+  // Remove only PDF content, keep buttons
+  container.querySelectorAll('.pdf-page').forEach(page => page.remove());
 
+  for (let i = 1; i <= currentPDF.numPages; i++) {
+      currentPDF.getPage(i).then(function (page) {
+          const pageWrapper = document.createElement('div');
+          pageWrapper.classList.add('pdf-page');
+          pageWrapper.style.position = 'relative';
 
-    
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          const textLayer = document.createElement('div');
+          textLayer.classList.add('text-layer');
 
-    for (let i = 1; i <= currentPDF.numPages; i++) {
-        currentPDF.getPage(i).then(function (page) {
-            const canvas = document.createElement('canvas');
-            const context = canvas.getContext('2d');
-            container.appendChild(canvas);
+          pageWrapper.appendChild(canvas);
+          pageWrapper.appendChild(textLayer);
+          container.appendChild(pageWrapper);
 
-            const viewport = page.getViewport({ scale: currentScale });
-            canvas.width = viewport.width;
-            canvas.height = viewport.height;
+          const viewport = page.getViewport({ scale: currentScale });
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
 
-            const renderContext = {
-                canvasContext: context,
-                viewport: viewport,
-            };
+          const renderContext = {
+              canvasContext: context,
+              viewport: viewport,
+          };
 
-            //page.render(renderContext);
-
-
-            page.render(renderContext).promise.then(() => {
-              // Apply Invert Filter to Make Text White
+          page.render(renderContext).promise.then(() => {
               let imgData = context.getImageData(0, 0, canvas.width, canvas.height);
               let pixels = imgData.data;
 
               for (let j = 0; j < pixels.length; j += 4) {
-                  // Invert colors
                   pixels[j] = 255 - pixels[j];     // Red
                   pixels[j + 1] = 255 - pixels[j + 1]; // Green
                   pixels[j + 2] = 255 - pixels[j + 2]; // Blue
               }
-
               context.putImageData(imgData, 0, 0);
+
+              // Adjust text layer scaling and positioning after rendering PDF
+              textLayer.style.width = `${viewport.width}px`;
+              textLayer.style.height = `${viewport.height}px`;
+              textLayer.style.position = 'absolute';
+              textLayer.style.top = `0px`;
+              textLayer.style.left = `0px`;
+              textLayer.style.pointerEvents = 'none';
+              textLayer.style.userSelect = 'text';
+
+              // Overlay text
+              page.getTextContent().then(function (textContent) {
+                textContent.items.forEach(function (textItem) {
+                    const span = document.createElement('span');
+                    const textDiv = document.createElement('div');
+            
+                    // Convert PDF coordinates to canvas coordinates
+                    let [x, y] = page.getViewport({ scale: currentScale })
+                      .convertToViewportPoint(textItem.transform[4], textItem.transform[5]);
+            
+                    // Adjust positioning slightly by adding/subtracting small offsets
+                    const adjustedY = y - (textItem.height * currentScale) + (textItem.height / currentScale) - textItem.height * 0.3;
+                    textDiv.style.left = `${x}px`;
+                    textDiv.style.top = `${adjustedY}px`;
+            
+                    span.textContent = textItem.str;
+                    span.style.position = 'absolute';
+                    span.style.width = `${textItem.width * currentScale}px`;
+                    span.style.display = 'inline-block';
+            
+                    textDiv.style.position = 'absolute';
+                    textDiv.style.left = `${x}px`;
+                    textDiv.style.top = `${adjustedY}px`; // Use adjustedY here
+                    textDiv.style.fontSize = `${textItem.height * currentScale}px`;  // Adjust this more for precision
+                    span.style.fontFamily = textItem.fontName || 'default-font';
+                    span.style.fontWeight = textItem.fontWeight || 'normal';
+                    span.style.fontStyle = textItem.fontStyle || 'normal';
+                    textDiv.style.lineHeight = `${textItem.height * currentScale}px`;
+                    textDiv.style.whiteSpace = 'nowrap';
+                    textDiv.style.color = 'transparent'; // Make text invisible
+                    textDiv.style.pointerEvents = 'all';
+            
+
+                    textDiv.appendChild(span);
+                    textLayer.appendChild(textDiv);
+                });
             });
-
-
-        });
-    }
+          });
+      });
+  }
 }
 
+
+
+// Detect text selection
+ document.addEventListener('mouseup', function () {
+     const selectedText = window.getSelection().toString().trim();
+     if (selectedText) {
+        selectedInput = selectedText;
+        console.log("Selected Word:", selectedInput);
+     }
+ });
+
+
+
 document.getElementById('pdf-container').addEventListener('wheel', function (event) {
-  if (event.ctrlKey || event.metaKey) {
-      // Handle Zooming (CMD/CTRL + Scroll)
-      event.preventDefault(); // Prevent default scrolling only when zooming
-
-      if (event.deltaY < 0) {
-          // Scroll Up (Zoom In)
-          currentScale += 0.05;
-      } else if (event.deltaY > 0) {
-          // Scroll Down (Zoom Out)
-          if (currentScale > 0.5) { // Prevent excessive zooming out
-              currentScale -= 0.05;
-          }
-      }
-
-      renderPDF(); // Re-render PDF with updated scale
-  } 
-  // No need for an "else" here – if CMD/CTRL isn't pressed, normal scrolling happens naturally
+    if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+        currentScale += event.deltaY < 0 ? 0.05 : currentScale > 0.5 ? -0.05 : 0;
+        renderPDF();
+    }
 }, { passive: false });
+
+
+
 
 
 
@@ -195,7 +258,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 ).toString();
 
 let stringifiedData = null;
-
 
 
 
@@ -220,48 +282,48 @@ async function fetchSummary() {
 
       try {
         console.log("PDF file loaded. Processing...");
-        
+
         const pdfDocument = await pdfjsLib.getDocument(arrayBuffer).promise;
         const numPages = pdfDocument.numPages;
-        console.log(`PDF contains ${numPages} pages.`);
 
         let text = '';
         for (let pageNum = 1; pageNum <= numPages; pageNum++) {
           const page = await pdfDocument.getPage(pageNum);
           const content = await page.getTextContent();
           const pageText = content.items.map(item => item.str).join(' ');
-          console.log(`Extracted text from page ${pageNum}:`, pageText);
           text += pageText + '\n';
         }
 
-        console.log("Full extracted text:", text);
-
+        console.log("selec", selectedInput)
         const response = await fetch('http://localhost:3000/process-text', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text }),
+          body: JSON.stringify({ text, selectedInput }), // Added selectedInput
         });
 
         console.log("API request sent. Awaiting response...");
 
         const responseText = await response.text();
-        console.log("Raw API response:", responseText);
-
+        // console.log("Raw API response:", responseText);
+        
         try {
           const data = JSON.parse(responseText);
           console.log("Parsed API response:", JSON.stringify(data, null, 2));
-
-          if (!Array.isArray(data)) {
+        
+          // Check if the response has the 'enhanced' object
+         if (!Array.isArray(data)) {
             console.error("Unexpected response format:", data);
             reject("Invalid response format");
             return;
           }
 
+        
           resolve(data);
         } catch (parseError) {
           console.error("Error parsing JSON response:", parseError);
           reject("Invalid JSON response");
         }
+        
 
       } catch (error) {
         console.error("Error extracting text from PDF or fetching summary:", error);
@@ -272,6 +334,7 @@ async function fetchSummary() {
     reader.readAsArrayBuffer(file);
   });
 }
+
 
 
 window.fetchSummary = fetchSummary;

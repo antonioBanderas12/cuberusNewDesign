@@ -85,15 +85,6 @@ h1 {
   height: 100vh;
   justify-content: space-between;
 }
-/* 
-#container {
-  display: flex;
-  width: 100%;
-  height: 100vh;
-  justify-content: space-between;
-  margin: 0;
-  padding: 0;
-} */
 
 
 
@@ -196,8 +187,8 @@ button:focus-visible {
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  background-color: #1a1a1a;
-  color: white;
+  background-color: white;
+  color: black;
   border-radius: 8px;
   cursor: pointer;
   border: 1px solid #ccc;
@@ -212,9 +203,11 @@ button:focus-visible {
 
 
 
-
-
-
+  ::selection {
+    background-color: #F7E0C0;  /* Custom highlight color (blue in this case) */
+    color: black;  /* Text color while selected */
+    border-radius: 5px;  /* Rounded corners for the selection area */
+}
 
 
 
@@ -234,6 +227,41 @@ button:focus-visible {
   left: 50%;
   transform: translateX(-50%);
   transition: top 0.3s ease; /* Smooth transition */
+}
+
+#summary {
+  position: absolute; /* Allows it to move */
+  top: 10px; /* Adjust as needed */
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 20px;
+  z-index: 100;
+  background: white;
+  padding: 10px 20px;
+  color: black;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid #ccc;
+  transition: transform 0.3s ease, border-color 0.3s;
+
+}
+
+
+
+#summary button {
+  padding: 10px 20px;
+  cursor: pointer;
+  border: 1px solid #ccc;
+  transition: transform 0.3s ease, border-color 0.3s;
+}
+
+#summary button:hover {
+  transform: scale(1.1);
+  border-color: #F7E0C0;
 }
 
 
