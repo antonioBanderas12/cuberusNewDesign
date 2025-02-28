@@ -259,13 +259,22 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 
 let stringifiedData = null;
 
-
-
+let isRequestInProgress = false;
 
 
 
 
 async function fetchSummary() {
+
+  if (isRequestInProgress) {
+    console.log("Request is already in progress. Please wait.");
+    return;
+  }
+  
+  isRequestInProgress = true;
+
+
+
   const fileInput = document.getElementById('pdfFile');
   const file = fileInput.files[0];
 
@@ -274,15 +283,14 @@ async function fetchSummary() {
     return null;
   }
 
-  const reader = new FileReader();
-
   return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
     reader.onload = async function (event) {
       const arrayBuffer = event.target.result;
 
       try {
         console.log("PDF file loaded. Processing...");
-
         const pdfDocument = await pdfjsLib.getDocument(arrayBuffer).promise;
         const numPages = pdfDocument.numPages;
 
@@ -294,36 +302,39 @@ async function fetchSummary() {
           text += pageText + '\n';
         }
 
-        console.log("selec", selectedInput)
+        console.log("Selected Input:", selectedInput);
+        if (!selectedInput) {
+          console.error("selectedInput is undefined!");
+          reject("Missing selectedInput");
+          return;
+        }
+
         const response = await fetch('http://localhost:3000/process-text', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, selectedInput }), // Added selectedInput
+          body: JSON.stringify({ text, selectedInput }),
         });
 
         console.log("API request sent. Awaiting response...");
 
-        const responseText = await response.text();
-        // console.log("Raw API response:", responseText);
-        
+        let data;
         try {
-          const data = JSON.parse(responseText);
-          console.log("Parsed API response:", JSON.stringify(data, null, 2));
-        
-          // Check if the response has the 'enhanced' object
-         if (!Array.isArray(data)) {
-            console.error("Unexpected response format:", data);
-            reject("Invalid response format");
-            return;
-          }
-
-        
-          resolve(data);
-        } catch (parseError) {
-          console.error("Error parsing JSON response:", parseError);
-          reject("Invalid JSON response");
+          data = await response.json();
+        } catch (err) {
+          console.error("Failed to parse JSON response:", err);
+          reject("Invalid JSON format");
+          return;
         }
-        
+
+        console.log("Parsed API response:", JSON.stringify(data, null, 2));
+
+        if (!Array.isArray(data)) {
+          console.error("Unexpected response format:", data);
+          reject("Invalid response format");
+          return;
+        }
+
+        resolve(data);
 
       } catch (error) {
         console.error("Error extracting text from PDF or fetching summary:", error);
@@ -331,14 +342,17 @@ async function fetchSummary() {
       }
     };
 
+    reader.onerror = function (event) {
+      console.error("FileReader error:", event.target.error);
+      reject(event.target.error);
+    };
+
     reader.readAsArrayBuffer(file);
   });
 }
 
 
-
-window.fetchSummary = fetchSummary;
-
+//  window.fetchSummary = fetchSummary;
 
 
 
@@ -378,7 +392,7 @@ function initializeThreeJS(boxDataList){
 
   camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
   originalAspectRatio = width / height; // Save the original aspect ratio
-  scene.background = new THREE.Color(0x424949 );
+  // scene.background = new THREE.Color(0x424949 );
 
 
 
@@ -509,7 +523,14 @@ function createBox(name, description, status) {
 
 // enhanceBox
 function enhanceBox(name, parentes = [], relations = [[]], sequence = []) {
+
   let cube = boxes.find(box => box === name);
+
+  // if (!cube) {
+  //   console.error("Box not found, skipping enhancement.");
+  //   return;
+  // }
+
 
   //let cube = boxes.find(box => box.userData.name === name);
 
@@ -3233,17 +3254,58 @@ boxesData.forEach(data => {
 
 
   // Phase 3: Enhance all boxes after ensuring parents exist
-  boxesData.forEach(data => {
-      const box = createdBoxes.get(data.name);
+  // boxesData.forEach(data => {
+  //     const box = createdBoxes.get(data.name);
 
-      const parentBoxes = data.parents.map(parentName => createdBoxes.get(parentName)).filter(Boolean);
-      const processedRelations = data.relations.map(([relatedName, description]) => 
-          [createdBoxes.get(relatedName), description]).filter(([box]) => box);
-      const sequenceBoxes = data.sequence.map(sequenceName => createdBoxes.get(sequenceName)).filter(Boolean);
+  //     const parentBoxes = data.parents.map(parentName => createdBoxes.get(parentName)).filter(Boolean);
+  //     const processedRelations = data.relations.map(([relatedName, description]) => 
+  //         [createdBoxes.get(relatedName), description]).filter(([box]) => box);
+  //     const sequenceBoxes = data.sequence.map(sequenceName => createdBoxes.get(sequenceName)).filter(Boolean);
 
 
-      enhanceBox(box, parentBoxes, processedRelations, sequenceBoxes);
-  });
+  //     enhanceBox(box, parentBoxes, processedRelations, sequenceBoxes);
+  // });
+
+
+
+
+
+// Phase 3: Enhance all boxes after ensuring parents exist
+boxesData.forEach(data => {
+  const box = createdBoxes.get(data.name);
+
+  // Ensure box exists before continuing
+  if (!box) {
+    console.warn(`Box for ${data.name} not found, skipping enhancement.`);
+    return; // Skip this box if it doesn't exist
+  }
+
+  const parentBoxes = data.parents
+    .map(parentName => createdBoxes.get(parentName))
+    .filter(Boolean); // Remove any null or undefined parents
+
+  const processedRelations = data.relations
+    .map(([relatedName, description]) => 
+        [createdBoxes.get(relatedName), description])
+    .filter(([box]) => box); // Remove any null or undefined relations
+
+  // Ensure sequenceBoxes contains only valid boxes
+  const sequenceBoxes = data.sequence
+    .map(sequenceName => createdBoxes.get(sequenceName))
+    .filter(Boolean); // Filter out any null or undefined values
+
+  // Add check to ensure sequenceBoxes is not empty before calling enhanceBox
+  if (sequenceBoxes.length > 0) {
+    enhanceBox(box, parentBoxes, processedRelations, sequenceBoxes);
+  } else {
+    enhanceBox(box, parentBoxes, processedRelations, []);  }
+});
+
+
+
+
+
+
 
   // Step 4: **Now update levels after all boxes exist**
   updateZLevels();

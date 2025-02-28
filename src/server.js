@@ -4,196 +4,285 @@ import dotenv from 'dotenv';
 import axios from 'axios';
 import { exec } from 'child_process';
 import rateLimit from 'express-rate-limit';
-
-dotenv.config();
-
-const app = express();
-const port = 3000;
-
-const limiter = rateLimit({
-  windowMs: 1000, // 1 second
-  max: 1, // Allow only 1 request per second
-});
-
-app.use(cors());
-app.use(express.json());
-//app.use('/process-text', limiter);
+import JSON5 from 'json5';
+import fastJsonParse from 'fast-json-parse';
 
 
+//config
+    dotenv.config();
+    const app = express();
+    const port = 3000;
+    const limiter = rateLimit({
+      windowMs: 1000, // 1 second
+      max: 1, // Allow only 1 request per second
+    });
+    app.use(cors());
+    app.use(express.json());
+    //app.use('/process-text', limiter);
 
 
-// Preprocess text: Clean and normalize
-const preprocessText = (text) => {
-  console.log("Step 1: Preprocessing text...");
-  return text.replace(/\s+/g, ' ').trim();
+
+
+// Preprocess text
+    const preprocessText = (text) => {
+      console.log("Step 1: Preprocessing text...");
+      return text.replace(/\s+/g, ' ').trim();
+    };
+
+
+//LLM
+
+
+
+
+const firstPrompt = (text, inputWord) => {
+
+  return `How is "${inputWord}" described in the "${text}" ? Only focus on "${inputWord}", do not summarise the whole text, stay short.`;
 };
 
 
-//elements
-const prompt = (text, inputWord) => {
-  return `This is the text: ${text}. Extract relevant entities connected to ${inputWord} in JSON format. For each entity as well as for ${inputWord}, provide:
-   
-    name: The entity's name.
-    description: A short definition or explanation.
-    status: Its category or classification.
-    parents: A list of superordinate concepts (e.g., broader categories or whole-part relationships).
-    relations: A list of tuples describing non-hierarchical relationships with other entities (e.g., influences, dependencies).
 
-    Here is an example so you have an idea, how the form could look like:
-        
-      "[
-        {
-          [
-          "name": "car",
-          "description": "A wheeled motor vehicle used for transportation, typically powered by an internal combustion engine or an electric motor, designed to carry a small number of passengers.",
-          "status": "transportation mode",
-          "parents": ["transportation", "vehicle"],
-          "relations": [
-              ["engine", "Powered by either internal combustion engines or electric motors"],
-              ["hybrid_car", "Uses both traditional and electric propulsion systems"],
-              ["autonomous_vehicle", "Can function independently without a human driver"]
-          ]
-        }
-      ]"
+const secondPrompt = (summaryText) => {
 
-    Ensure output is a valid JSON. Do not include extra text.
+  return `This is the text: "${summaryText}". Extract the semantically relevant entities in **valid JSON format**. Do not include too many entities, only the most relevant ones.
 
-`}
-
-//,"sequence": ["fast transportation", "long distance connectivity"]
-  
-// Also create sequences of several of the created entities that emerge from each other or can be described to follow aech oher in a sequence. Try to include more than 2 elements for each sequence. An element references the sequence element or several elements that follow it.
-  
-//reference to elements that follows sequenmtially
-
-async function extractDeep(text, inputWord) {
-  try {
-    console.log("contextualising text...");
-    const response = await axios.post('http://localhost:11434/api/generate', {
-      model: 'deepseek-r1:7b',
-      prompt: prompt(text, inputWord),
-      stream: false,
-      temperature: 0.1
-    });
-   
-    console.log("extracted:", response.data.response)
-
-    const entities = parseEntities(response.data.response);
-    return entities;
-  } catch (error) {
-    console.error('Error during entity extraction:', error);
-    throw new Error('Entity extraction failed');
-  }
-}
+  For each entity, provide:
+  - "name": The entity's name.
+  - "description": A short definition or explanation.
+  - "status": Its category or classification.
+  - "relations": A list of tuples that show relationships with other entities and describe the nature of this relationship.
 
 
-//sequence
-const seqPrompt = (text, ent) => {
-  return ` 
-Based on the following text: "${text}", create sequences of entities from the list: ${JSON.stringify(ent.map(e => e.name))}. 
-
-Each sequence should be a logical progression of related entities, where one follows naturally from the other. Try to include at least 3 entities per sequence.
-
-Return only a valid JSON array of arrays, without any extra text:  
-[
-  ["entity1", "entity2", "entity3"],
-  ["entity1", "entity5", "entity3"],
-  ["entity4", "entity5", "entity6"]
-]
-
-Ensure the output is valid JSON.`;
-}
-
-
-async function extractSequence(text, ent) {
-  try {
-    console.log("Step s: Fetching sequences");
-    const response = await axios.post('http://localhost:11434/api/generate', {
-      model: 'deepseek-r1:7b',
-      prompt: seqPrompt(text, ent),
-      stream: false,
-      temperature: 0.1
-    });
-
-    console.log("Extracted sequences:", response.data.response);
-
-    const sequences = parseEntities(response.data.response);
-
-    //ensure JSON
-    // const jsonText = response.data.response.trim();
-    // // const sequ = sanitizeJSON(jsonText);
-    // const sequences = JSON.parse(jsonText);
-    
-    console.log("cleaned sequences:", sequences);
-    return sequences;
-  } catch (error) {
-    console.error('Error during entity extraction:', error);
-    throw new Error('Entity extraction failed');
-  }
-}
-
-
-
-
-function parseEntities(responseText) {
-  // Find the first '[' character, indicating the start of a JSON array
-  const startIndex = responseText.indexOf('[');
-  if (startIndex === -1) {
-    console.error("No JSON array found in response.");
-    return [];
-  }
-
-  // Use a counter to find the matching closing ']'
-  let bracketCount = 0;
-  let endIndex = -1;
-  for (let i = startIndex; i < responseText.length; i++) {
-    const char = responseText[i];
-    if (char === '[') {
-      bracketCount++;
-    } else if (char === ']') {
-      bracketCount--;
-      if (bracketCount === 0) {
-        endIndex = i;
-        break;
+ **Example Output:**
+  \`\`\`json
+    [
+      {
+        "name": "car",
+        "description": "A wheeled motor vehicle used for transportation...",
+        "status": "transportation mode",
+        "relations": [
+          ["engine", "Powered by internal combustion or electric motors"],
+          ["hybrid_car", "Uses both traditional and electric propulsion"]
+        ]
       }
+    ]
+  \`\`\`
+
+
+  Ensure output is in **valid JSON format**, without extra text.
+  
+  `;
+};
+
+
+
+
+  const thirdPrompt = (summaryText, entities) => {
+    return `Based on the information of the "${summaryText}" organise only the ${JSON.stringify(entities.map(e => e.name))}.
+    
+
+        - organise the ${JSON.stringify(entities.map(e => e.name))} into clusters. A entity can be part of multiple clusters. A entity can be a superordinate entity for other entities. Return the cluster in the following way:
+        
+        \`\`\`json
+          [superordinate entity 1, [list of subordinate entities]],
+          [superordinate entity 2, [list of subordinate entities]]
+        \`\`\`
+        `;
+  };
+
+
+  const fourthPrompt = (summaryText, entities) => {
+    return `Based on the information of the "${summaryText}" organise only the ${JSON.stringify(entities.map(e => e.name))}.
+    
+        - find sequences within the ${JSON.stringify(entities.map(e => e.name))} that naturally follow each other in a structured order. One element can be part of multiple sequences.
+
+        \`\`\`json
+          [sequence entity 1, sequence entity 2, sequence entity 3],
+          [sequence entity 2, sequence entity 4, sequence entity 5]
+        \`\`\`
+        `;
+  };
+
+
+
+
+
+
+
+
+
+  async function summarize(text, inputWord) {
+    try {
+      console.log("summarize ...");
+      
+      const response = await axios.post('http://localhost:11434/api/generate', {
+        model: 'deepseek-r1:7b',
+        prompt: firstPrompt(text, inputWord),
+        stream: false,
+        temperature: 0.1
+      });
+  
+
+      let answer = response.data.response
+      const cleanedSummary = answer.replace(/<think>[\s\S]*?<\/think>/, '').trim();
+  
+      return cleanedSummary;
+    } catch (error) {
+      console.error("Error during entity extraction:", error);
+      throw new Error("Entity extraction failed");
     }
   }
 
-  if (endIndex === -1) {
-    console.error("Could not find a matching closing bracket.");
-    return [];
-  }
 
-  // Extract the JSON substring
-  const jsonString = responseText.substring(startIndex, endIndex + 1).trim();
 
-  // Optionally, remove unwanted escapes or whitespace issues
-  let sanitizedString = jsonString
-    .replace(/\s+/g, ' ')  // Normalize whitespace
-    .replace(/\\'/g, "'")  // Unescape single quotes
-    .replace(/\\"/g, '"')  // Unescape double quotes
-    .replace(/<\/?think>/gi, '') // Remove any `<think>` tags if present
-    .replace(/\n/g, '');  // Remove newlines
 
-  // Check for common issues in the JSON structure
-  // 1. Missing commas
-  sanitizedString = sanitizedString.replace(/}\s*{/g, '}, {'); // Fix missing commas between objects
-  // 2. Trailing commas (e.g., after the last item in an array)
-  sanitizedString = sanitizedString.replace(/,(\s*[\}\]])/g, '$1'); // Remove trailing commas
+  async function extractEntities(text) {
+    console.log("entities ...");
 
-  // 3. Fix malformed entity values (for example, strings that aren't properly quoted)
-  sanitizedString = sanitizedString.replace(/(\w+):\s*([\w\s]+)/g, '"$1": "$2"'); // Ensuring keys and values are quoted correctly
+    try {      
+        const response = await axios.post('http://localhost:11434/api/generate', {
+            model: 'llama3.1:8b',
+            prompt: secondPrompt(text),
+            stream: false,
+            temperature: 0.1
+        });
 
-  // Try to parse the JSON string
-  try {
-    const parsed = JSON.parse(sanitizedString);
-    return Array.isArray(parsed) ? parsed : [parsed];
-  } catch (error) {
-    console.error("Error parsing JSON:", error);
-    console.log("Sanitized response that failed to parse:", sanitizedString);
-    return [];
-  }
+        if (!response.data || !response.data.response) {
+            throw new Error("API response structure is invalid");
+        }
+
+        console.log(response.data.response);
+
+        try {
+            const cleanedJson = extractJsonUsingRegex(response.data.response);
+            if (!cleanedJson) {
+                throw new Error("Extracted JSON is empty or invalid.");
+            }
+
+            console.log("Parsed JSON:", cleanedJson);
+            return cleanedJson;
+        } catch (error) {
+            console.error("Error parsing JSON:", error.message);
+        }
+
+    } catch (error) {
+        console.error("Error during entity extraction:", error);
+        throw new Error("Entity extraction failed");
+    }
 }
+
+
+
+
+  async function parents(text, ent) {
+    console.log("parents ...");
+    try {
+      
+      const response = await axios.post('http://localhost:11434/api/generate', {
+        model: 'deepseek-r1:7b',
+        prompt: thirdPrompt(text, ent),
+        stream: false,
+        temperature: 0.1
+      });
+  
+      const cleanedFinal = extractJsonUsingRegex(response.data.response);
+        if (!cleanedFinal) {
+            console.error("Failed to extract valid JSON");
+        }
+
+  
+      return cleanedFinal;
+    } catch (error) {
+      console.error("Error during entity extraction:", error);
+      throw new Error("Entity extraction failed");
+    }
+  }
+
+
+
+
+
+  async function sequences(text, ent) {
+    console.log("sequences ...");
+
+    try {
+      
+      const response = await axios.post('http://localhost:11434/api/generate', {
+        model: 'deepseek-r1:7b',
+        prompt: fourthPrompt(text, ent),
+        stream: false,
+        temperature: 0.1
+      });
+  
+      const cleanedFinal = extractJsonUsingRegex(response.data.response);
+        if (!cleanedFinal) {
+            console.error("Failed to extract valid JSON");
+        }
+
+  
+      return cleanedFinal;
+    } catch (error) {
+      console.error("Error during entity extraction:", error);
+      throw new Error("Entity extraction failed");
+    }
+  }
+
+
+
+
+
+
+
+
+
+
+  function parseEntities(responseData) {
+    try {
+      console.log("Parsing JSON...");
+  
+      // If responseData is already an object, return it
+      if (typeof responseData === 'object' && responseData !== null) {
+        return responseData;
+      }
+  
+      // If it's a string, try parsing it
+      const parsed = JSON5.parse(responseData.trim());
+      if (parsed.entities && parsed.sequences) {
+        return parsed;
+      }
+  
+      throw new Error("Invalid JSON format.");
+    } catch (error) {
+      console.error("Error parsing JSON:", error);
+      return { entities: [], sequences: [] };
+    }
+  }
+  
+
+
+function extractJsonUsingRegex(responseText) {
+  if (typeof responseText !== "string") {
+    console.error("Expected a string in extractJsonUsingRegex but got:", responseText);
+    return null;
+  }
+
+  const jsonMatch = responseText.match(/```json([\s\S]*?)```/);
+if (jsonMatch) {
+    const jsonString = jsonMatch[1].trim();
+    try {
+        return JSON.parse(jsonString);
+    } catch (error) {
+        console.error("Error parsing JSON:", error);
+        return null;
+    }
+} else {
+    console.error("JSON block not found");
+    return null;
+}
+
+}
+
+
 
 
 
@@ -208,35 +297,31 @@ app.post('/process-text', async (req, res) => {
     }
 
     let cleanedText = preprocessText(text);
-    const contextualised = await extractDeep(cleanedText, selectedInput);
+    console.log("input word: ", selectedInput);
     
-    if (!Array.isArray(contextualised) || contextualised.length === 0) {
-      throw new Error('Invalid LLM response format');
-    }
+    const summary = await summarize(cleanedText, selectedInput)
+    console.log("Summary:", summary);
 
-    // Extract sequence
-    const sequences = await extractSequence(cleanedText, contextualised);
-    if (Array.isArray(sequences) && sequences.length > 0) {
-      sequences.forEach(seq => {
-        for (let i = 0; i < seq.length - 1; i++) {
-          const currentEntity = contextualised.find(e => e.name === seq[i]);
-          const nextEntity = contextualised.find(e => e.name === seq[i + 1]);
+    const extractedEntities = await extractEntities(summary);
+    console.log("extractedEntities:", extractedEntities);
 
-          if (currentEntity) {
-            currentEntity.sequence = currentEntity.sequence || [];
-            currentEntity.sequence.push(nextEntity ? nextEntity.name : null);
-          }
-        }
-      });
-    }
+    const parent = await parents(summary, extractedEntities)
+    console.log("parent:", parent);
 
-    // Return only the array of entities
-    res.json(contextualised);
+
+    const sequence = await sequences(summary, extractedEntities)
+    console.log("sequence:", sequence);
+
+
+
+
+    res.json(sequence);
   } catch (error) {
     console.error("Error processing request:", error);
     res.status(500).json({ error: 'Internal Server Error', details: error.message });
   }
 });
+
 
 
 
