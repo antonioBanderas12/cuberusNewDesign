@@ -6,7 +6,13 @@ import { exec } from 'child_process';
 import rateLimit from 'express-rate-limit';
 import JSON5 from 'json5';
 import fastJsonParse from 'fast-json-parse';
+import pluralize from 'pluralize';
+import fs from 'fs';
+import natural from 'natural';
+import compromise from 'compromise';
 
+
+const { JaroWinklerDistance } = natural;
 
 //config
     dotenv.config();
@@ -37,7 +43,7 @@ import fastJsonParse from 'fast-json-parse';
 
 const firstPrompt = (text, inputWord) => {
 
-  return `How is "${inputWord}" described in the "${text}" ? Only focus on "${inputWord}", do not summarise the whole text, stay short.`;
+  return `How is "${inputWord}" described in the "${text}" ? Focus on "${inputWord}", do not summarise the whole text.`;
 };
 
 
@@ -47,8 +53,8 @@ const secondPrompt = (summaryText) => {
   return `This is the text: "${summaryText}". Extract the semantically relevant entities in **valid JSON format**. Do not include too many entities, only the most relevant ones.
 
   For each entity, provide:
-  - "name": The entity's name.
-  - "description": A short definition or explanation.
+  - "name": The entity's name in one word.
+  - "description": A definition or explanation.
   - "status": Its category or classification.
   - "relations": A list of tuples that show relationships with other entities and describe the nature of this relationship.
 
@@ -136,7 +142,7 @@ const fourthPrompt = (summaryText, entities) => {
       console.log("summarize ...");
       
       const response = await axios.post('http://localhost:11434/api/generate', {
-        model: 'deepseek-r1:7b',
+        model: 'deepseek-r1:7b', // deepseek-r1:7b
         prompt: firstPrompt(text, inputWord),
         stream: false,
         temperature: 0.1
@@ -171,8 +177,6 @@ const fourthPrompt = (summaryText, entities) => {
             throw new Error("API response structure is invalid");
         }
 
-        console.log(response.data.response);
-
         try {
             const cleanedJson = extractJsonUsingRegex(response.data.response);
             if (!cleanedJson) {
@@ -192,63 +196,67 @@ const fourthPrompt = (summaryText, entities) => {
 }
 
 
+async function parents(text, ent, attempts = 3) {
+  console.log("parents ...");
 
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+          const response = await axios.post('http://localhost:11434/api/generate', {
+              model: 'llama3.1:8b',
+              prompt: thirdPrompt(text, ent),
+              stream: false,
+              temperature: 0.1
+          });
 
-  async function parents(text, ent) {
-    console.log("parents ...");
-    try {
-      
-      const response = await axios.post('http://localhost:11434/api/generate', {
-        model: 'llama3.1:8b',
-        prompt: thirdPrompt(text, ent),
-        stream: false,
-        temperature: 0.1
-      });
+          const cleanedFinal = extractJsonUsingRegex(response.data.response);
+          
+          if (cleanedFinal) {
+              return cleanedFinal; // Return valid JSON
+          }
 
-      const cleanedFinal = extractJsonUsingRegex(response.data.response);
-        if (!cleanedFinal) {
-            console.error("Failed to extract valid JSON");
-        }
-
-  
-      return cleanedFinal;
-    } catch (error) {
-      console.error("Error during entity extraction:", error);
-      throw new Error("Entity extraction failed");
-    }
+          console.warn(`Failed to extract valid JSON. Attempt ${attempt} of ${attempts}`);
+          await delay(500);
+      } catch (error) {
+          console.error(`Error during entity extraction (Attempt ${attempt} of ${attempts}):`, error);
+      }
   }
 
+  throw new Error("Entity extraction failed after multiple attempts");
+}
 
 
+async function sequences(text, ent, attempts = 3) {
+  console.log("sequences ...");
 
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+          const response = await axios.post('http://localhost:11434/api/generate', {
+              model: 'llama3.1:8b',
+              prompt: fourthPrompt(text, ent),
+              stream: false,
+              temperature: 0.1
+          });
 
-  async function sequences(text, ent) {
-    console.log("sequences ...");
+          const cleanedFinal = extractJsonUsingRegex(response.data.response);
+          
+          if (cleanedFinal) {
+              return cleanedFinal; // Return valid JSON
+          }
 
-    try {
-      
-      const response = await axios.post('http://localhost:11434/api/generate', {
-        model: 'llama3.1:8b',
-        prompt: fourthPrompt(text, ent),
-        stream: false,
-        temperature: 0.1
-      });
-
-      const cleanedFinal = extractJsonUsingRegex(response.data.response);
-        if (!cleanedFinal) {
-            console.error("Failed to extract valid JSON");
-        }
-
-  
-      return cleanedFinal;
-    } catch (error) {
-      console.error("Error during entity extraction:", error);
-      throw new Error("Entity extraction failed");
-    }
+          console.warn(`Failed to extract valid JSON. Attempt ${attempt} of ${attempts}`);
+          await delay(500);
+      } catch (error) {
+          console.error(`Error during entity extraction (Attempt ${attempt} of ${attempts}):`, error);
+      }
   }
 
+  throw new Error("Entity extraction failed after multiple attempts");
+}
 
 
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 
 function extractJsonUsingRegex(responseText) {
@@ -277,7 +285,54 @@ if (jsonMatch) {
 
 
 
-//main
+
+
+
+// synonym handling
+
+const mergeAdjectivesAndNounsFromEntities = (entities) => {
+  const mergedEntities = [];
+
+  entities.forEach(entity => {
+    // Check if the entity contains an adjective and a noun
+    if (entity.name && entity.name.split(' ').length > 1) {
+      const words = entity.name.split(' ');
+      
+      // Check if the first word is an adjective and the second one is a noun
+      const doc = compromise(entity.name);  // Create a compromise document from entity name
+
+      let adjectives = doc.adjectives().out('array');
+      let nouns = doc.nouns().out('array');
+      
+      // If both adjective and noun are detected, merge them as a new entity
+      if (adjectives.length && nouns.length) {
+        mergedEntities.push({
+          name: `${adjectives[0]} ${nouns[0]}`,  // Combine adjective and noun
+          description: `Merged entity: ${adjectives[0]} ${nouns[0]}`,
+          status: 'merged entity',
+        });
+      }
+    }
+  });
+
+  return mergedEntities;
+};
+
+// Process and normalize entities
+const normalizeEntityName = (name) => {
+  return pluralize.singular(name.toLowerCase());
+};
+
+// Fuzzy matching function
+const findSimilarEntity = (name, entityNames) => {
+  const threshold = 0.8; // Adjust based on similarity needs
+  const nameLC = name.toLowerCase();
+  return [...entityNames].find(existingName =>
+    JaroWinklerDistance(nameLC, existingName.toLowerCase()) >= threshold
+  );
+};
+
+// Preprocess, summarize, and extract entities
 app.post('/process-text', async (req, res) => {
   console.log(`New request received at ${new Date().toISOString()}`);
 
@@ -287,104 +342,96 @@ app.post('/process-text', async (req, res) => {
       return res.status(400).json({ error: 'Text and Input Word are required' });
     }
 
+    // Preprocess text
     let cleanedText = preprocessText(text);
     console.log("input word: ", selectedInput);
-    
-    const summary = await summarize(cleanedText, selectedInput)
+
+    // Summarize
+    const summary = await summarize(cleanedText, selectedInput);
     console.log("Summary:", summary);
 
-    const extractedEntities = await extractEntities(summary);
+    // Extract Entities
+    let extractedEntities = await extractEntities(summary);
     console.log("extractedEntities:", extractedEntities);
 
+    // Merge adjectives and substantives from extracted entities
+    const mergedEntities = mergeAdjectivesAndNounsFromEntities(extractedEntities);
+    console.log("Merged Adjectives and Nouns from Entities:", mergedEntities);
 
+    // Normalize and merge similar entities
+    let entityMap = new Map();
 
+    extractedEntities.forEach(entity => {
+      let normalizedName = normalizeEntityName(entity.name.toLowerCase());
+      let existingEntityName = findSimilarEntity(normalizedName, entityMap.keys());
+      let finalName = existingEntityName || normalizedName;
 
-// add relations
-const entityNames = new Set(extractedEntities.map(e => e.name)); // Keep track of added entities
-
-extractedEntities.forEach(entity => {
-    entity.relations.forEach(relation => {
-        const [relationName, relationDescription] = relation; // Extract name & description
-
-        if (relationName && !entityNames.has(relationName)) {
-            extractedEntities.push({
-                name: relationName,
-                description: relationDescription || "No description available.",
-                status: "related element",
-                relations: [],
-                parents: []
-            });
-
-            entityNames.add(relationName);
-        }
+      if (!entityMap.has(finalName)) {
+        entityMap.set(finalName, { ...entity, name: finalName });
+      } else {
+        let existingEntity = entityMap.get(finalName);
+        existingEntity.parents = [...new Set([...existingEntity.parents, ...entity.parents])];
+        existingEntity.sequence = [...new Set([...existingEntity.sequence, ...entity.sequence])];
+      }
     });
-});
 
+    // Add merged adjective-noun entities to the map
+    mergedEntities.forEach(mergedEntity => {
+      const normalizedEntity = normalizeEntityName(mergedEntity.name);
+      if (!entityMap.has(normalizedEntity)) {
+        entityMap.set(normalizedEntity, { name: mergedEntity.name, description: mergedEntity.description });
+      }
+    });
 
-console.log("Updated extractedEntities with new relation entities:", extractedEntities);
+    extractedEntities = [...entityMap.values()];
 
+    // Add related entities
+    extractedEntities.forEach(entity => {
+      if (entity.relations && Array.isArray(entity.relations)) {
+        entity.relations.forEach(relation => {
+          const relationName = pluralize.singular(relation[0]);
 
+          if (!entityMap.has(relationName)) {
+            entityMap.set(relationName, {
+              name: relationName,
+              description: "No description available.",
+              status: "related entity",
+              relations: []
+            });
+          }
+        });
+      }
+    });
 
+    // Update list after related entities were added
+    extractedEntities = [...entityMap.values()];
 
+    // Parents and Sequences (same as before)
+    const parent = await parents(summary, extractedEntities);
+    const sequence = await sequences(summary, extractedEntities);
 
-
-    const parent = await parents(summary, extractedEntities)
-    console.log("parent:", parent);
-
-
-    const sequence = await sequences(summary, extractedEntities)
-    console.log("sequence:", sequence);
-
-
-
-
-
-
-
-
-    //merge
-
-    // Enhance extractedEntities with parent and sequence information
+    // Merge parent & sequence data
     extractedEntities.forEach(entity => {
       const entityName = entity.name;
 
-      // Find parents: entities listed before the current entity in parent relationships
       entity.parents = parent
-        .filter(relation => relation.includes(entityName)) // Find parent arrays containing the entity
+        .filter(relation => relation.some(name => pluralize.singular(name.toLowerCase()) === entityName))
         .map(relation => {
-          const index = relation.indexOf(entityName);
-          return index > 0 ? relation[index - 1] : null; // Get the entity before
+          const index = relation.findIndex(name => pluralize.singular(name.toLowerCase()) === entityName);
+          return index > 0 ? pluralize.singular(relation[index - 1].toLowerCase()) : null;
         })
-        .filter(Boolean); // Remove null values
+        .filter(Boolean);
 
-      // Find sequences: entities listed after the current entity in sequence relationships
       entity.sequence = sequence
-        .filter(seq => seq.includes(entityName)) // Find sequences containing the entity
+        .filter(seq => seq.some(name => pluralize.singular(name.toLowerCase()) === entityName))
         .map(seq => {
-          const index = seq.indexOf(entityName);
-          return index < seq.length - 1 ? seq[index + 1] : null; // Get the entity after
+          const index = seq.findIndex(name => pluralize.singular(name.toLowerCase()) === entityName);
+          return index < seq.length - 1 ? pluralize.singular(seq[index + 1].toLowerCase()) : null;
         })
-        .filter(Boolean); // Remove null values
+        .filter(Boolean);
     });
 
     console.log("Updated extractedEntities:", extractedEntities);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     res.json(extractedEntities);
   } catch (error) {
@@ -392,7 +439,6 @@ console.log("Updated extractedEntities with new relation entities:", extractedEn
     res.status(500).json({ error: 'Internal Server Error', details: error.message });
   }
 });
-
 
 
 

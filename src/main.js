@@ -422,7 +422,7 @@ function initializeThreeJS(boxDataList){
 
 
   //Variables
-  const boxSize = 5;
+  const boxSize = 10;
   let targetPosition = new THREE.Vector3();
   let currentLookAt = new THREE.Vector3(0, 0, 0);  // Camera focus point
   const boxes = [];
@@ -484,17 +484,25 @@ function initializeThreeJS(boxDataList){
 //createBoxes
 function createBox(name, description, status) {
 
-  if (!statusColorMap[status]) {
-    statusColorMap[status] = generateRandomColor();
-  }
+  // if (!statusColorMap[status]) {
+  //   statusColorMap[status] = generateRandomColor();
+  // }
 
-  const colour = statusColorMap[status];
+  // const colour = statusColorMap[status];
+
+let colour = white;
+
+if (name.toLowerCase() === selectedInput.toLowerCase()) {
+  colour = 0xCF6A84;
+}else if (status === 'related entity') {
+  colour = 0xE5E0B7;
+}
 
 
 
   // let colour = white;
 
-   const geometry = new THREE.BoxGeometry(boxSize, boxSize, 5);
+   const geometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
    const material = new THREE.MeshStandardMaterial({ color: colour, transparent: true,opacity: 1, wireframe: true });
    const cube = new THREE.Mesh(geometry, material);
 
@@ -512,6 +520,7 @@ function createBox(name, description, status) {
   cube.userData.colour = colour;
   cube.userData.statusline = null;
   cube.userData.sequence = [];
+  cube.userData.permLines = [];
 
 
   boxes.push(cube);
@@ -635,6 +644,46 @@ function enhanceBox(name, parentes = [], relations = [[]], sequence = []) {
 }
 
 console.log(boxDataList)
+
+
+
+
+
+// function updateZLevels() {
+//   function updateLevel(box) {
+//       if (!box.userData.parents.length) {
+//           // Root node, start from level 0
+//           box.userData.level = 0;
+//       } else {
+//           // Find the maximum level of all parents
+//           let maxParentLevel = Math.max(...box.userData.parents.map(parent => parent.userData.level));
+//           box.userData.level = maxParentLevel + 150; // Place child below lowest-level parent
+//       }
+      
+//       // Update position
+//       box.position.z = box.userData.level;
+//   }
+
+//   // Process all boxes iteratively (not recursively) to ensure all parents are updated first
+//   let remainingBoxes = [...boxes];
+
+//   while (remainingBoxes.length > 0) {
+//       let updatedBoxes = [];
+
+//       remainingBoxes.forEach(box => {
+//           let allParentsUpdated = box.userData.parents.every(parent => parent.userData.level !== undefined);
+
+//           if (allParentsUpdated) {
+//               updateLevel(box);
+//               updatedBoxes.push(box);
+//           }
+//       });
+
+//       // Remove processed boxes from the remaining list
+//       remainingBoxes = remainingBoxes.filter(box => !updatedBoxes.includes(box));
+//   }
+// }
+
 
 
 
@@ -898,60 +947,9 @@ function onHover(cube) {
     createOutline(cube);
     cube.material.color.set(black);
 
-    //   function tracePath(cube) {
-    //     let parents = boxes.filter(child => child.userData.sequence.includes(cube));
-
-    //     if (parents.length === 0) {
-    //         return;
-    //     }
-
-    //     parents.forEach(parent => {
-    //         createOutline(parent);
-    //         parent.material.color.set(black);
-    //         createLine(cube, parent);
-
-    //         // Recursively trace the path further
-    //         tracePath(parent);
-    //     });
-    // }
-
-    // tracePath(cube);
-
-
-
-
-
-
-    function tracePath(cube, visited = new Set()) {
-      if (visited.has(cube)) {
-          return; // Stop recursion if this cube was already visited (prevents cycles)
-      }
-  
-      visited.add(cube); // Mark this cube as visited
-  
-      let parents = boxes.filter(child => child.userData.sequence.includes(cube));
-  
-      if (parents.length === 0) {
-          return;
-      }
-  
-      parents.forEach(parent => {
-        createOutline(parent);
-        parent.material.color.set(black);
-        createLine(cube, parent);
-  
-          // Recursively trace the path further
-          tracePath(parent, visited);
-      });
-  }
-
-
   tracePath(cube);
 
   
-
-
-
  }
 
 
@@ -972,6 +970,48 @@ function onHover(cube) {
 // helpers
 // helpers
 // helpers
+
+
+
+
+
+
+function tracePath(cube, visited = new Set()) {
+  if (visited.has(cube)) {
+      return; // Stop recursion if this cube was already visited (prevents cycles)
+  }
+
+  visited.add(cube); // Mark this cube as visited
+
+  let parents = boxes.filter(child => child.userData.sequence.includes(cube));
+
+  if (parents.length === 0) {
+      return;
+  }
+
+  parents.forEach(parent => {
+    createOutline(parent);
+    parent.material.color.set(black);
+    createLine(cube, parent);
+
+      // Recursively trace the path further
+      tracePath(parent, visited);
+  });
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // navigation helpers
 function addGridHelper(scene) {
@@ -1168,6 +1208,180 @@ function manNavigation() {
   });
 };
 
+function createConstantLines(startCube, endCube, color = white) {
+  const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.2 });
+  const geometry = new THREE.BufferGeometry().setFromPoints([
+    startCube.position.clone(),
+    endCube.position.clone()
+  ]);
+  const line = new THREE.Line(geometry, material);
+  scene.add(line);
+
+  // Store the line in userData of the startCube for cleanup
+  if (!startCube.userData.permLines) {
+    startCube.userData.permLines = []; // Initialize permLines if it doesn't exist
+  }
+  startCube.userData.permLines.push(line);
+}
+
+
+
+function removePermLines(cube) {
+  if (cube && cube.userData.permLines && cube.userData.permLines.length > 0) {
+    // Remove each line from the scene
+    cube.userData.permLines.forEach(line => {
+      scene.remove(line);
+      line.geometry.dispose();  // Clean up geometry to prevent memory leaks
+      line.material.dispose();  // Clean up material to prevent memory leaks
+    });
+
+    // Clear the permLines array
+    cube.userData.permLines = []; // Reset the array after removal
+  } else {
+    console.log("No permanent lines to remove for cube:", cube);
+  }
+}
+
+
+
+
+
+
+function showconnections() {
+
+  if (mode === structure) {
+    // Cleanup all previously created lines
+    boxes.forEach(box => {
+      removePermLines(box);
+      if (box.userData.PermStatusline && box.userData.PermStatusline.length) {
+        box.userData.PermStatusline.forEach(outline => scene.remove(outline));
+        box.userData.PermStatusline = []; // Reset
+      }
+    });
+
+    // Show connections (create new lines)
+    setTimeout(() => {
+    boxes.forEach(box => {
+      if (box.userData.children) {
+        box.userData.children.forEach(child => {
+          createConstantLines(box, child);
+        });
+      }
+    });
+  }, 2000)
+
+
+
+
+  } else if (mode === relations) {
+    // Cleanup all previously created lines
+    boxes.forEach(box => {
+      removePermLines(box);
+      if (box.userData.PermStatusline && box.userData.PermStatusline.length) {
+        box.userData.PermStatusline.forEach(outline => scene.remove(outline));
+        box.userData.PermStatusline = []; // Reset
+      }
+  
+    });
+
+    // Show connections (create new lines for relations)
+    setTimeout(() => {
+    boxes.forEach(box => {
+      if (box.userData.relations) {
+        box.userData.relations.forEach(([entity, description]) => {
+          createConstantLines(box, entity);
+        });
+      }
+    });
+  }, 2000)
+
+
+} else if (mode === themes) {
+  boxes.forEach(box => {
+    removePermLines(box);
+    if (box.userData.PermStatusline && box.userData.PermStatusline.length) {
+      box.userData.PermStatusline.forEach(outline => scene.remove(outline));
+      box.userData.PermStatusline = []; // Reset
+    }
+  });
+
+  // Show connections (create new lines)
+  setTimeout(() => {
+    boxes.forEach(box => {
+      if (box.userData.status) {
+        const boundingBox = new THREE.Box3();
+        boxes
+          .filter(child => child.userData.status === box.userData.status)
+          .forEach(state => boundingBox.expandByObject(state));
+
+        const center = new THREE.Vector3();
+        const size = new THREE.Vector3();
+        boundingBox.getCenter(center);
+        boundingBox.getSize(size);
+
+        const boxGeometry = new THREE.BoxGeometry(size.x * 1.4, size.y * 1.4, size.z * 1.4);
+        const edges = new THREE.EdgesGeometry(boxGeometry);
+        const lineMaterial = new THREE.LineBasicMaterial({ color: white, linewidth: 2, transparent: true, opacity: 0.3 });
+
+        const statusOutline = new THREE.LineSegments(edges, lineMaterial);
+        statusOutline.position.copy(center);
+
+        // Store outline in an array
+        if (!box.userData.PermStatusline) {
+          box.userData.PermStatusline = [];
+        }
+        box.userData.PermStatusline.push(statusOutline);
+
+        // Add to scene
+        scene.add(statusOutline);
+      }
+    });
+  }, 2000);
+
+
+
+
+  }else if (mode === sequence) {
+
+    boxes.forEach(box => {
+      removePermLines(box);
+     if (box.userData.PermStatusline && box.userData.PermStatusline.length) {
+      box.userData.PermStatusline.forEach(outline => scene.remove(outline));
+      box.userData.PermStatusline = []; // Reset
+    }
+      
+    });
+
+    setTimeout(() => {
+      boxes.forEach(box => {
+        if (box.userData.sequence) {
+          box.userData.sequence.forEach(seq => {
+            createConstantLines(box, seq);
+          });
+        }
+      });
+    }, 2000)
+    
+
+  } else if (mode === latent) {
+
+
+    boxes.forEach(box => {
+      removePermLines(box);
+     if (box.userData.PermStatusline && box.userData.PermStatusline.length) {
+      box.userData.PermStatusline.forEach(outline => scene.remove(outline));
+      box.userData.PermStatusline = []; // Reset
+    }
+      
+    });
+  }
+}
+
+
+
+
+
+
 
 function changeMode() {
   const targetPosition = new THREE.Vector3(0,0,0);
@@ -1175,7 +1389,7 @@ function changeMode() {
 
 
   if (mode === structure) {
-    targetPosition.z +=  1.8* bigCubeSize;
+    targetPosition.z +=  3* bigCubeSize;
     rot.set(0, 0, 0); // 90 degrees in radians
 
     let hiddenBoxes = boxes.filter(box => !box.visible);
@@ -1190,16 +1404,18 @@ function changeMode() {
 
     scene.getObjectByName('bigCubeMesh').visible = false;
     setTimeout(() => {
-      scene.getObjectByName('bigCubeMesh').position.set(0,0,-10);
+      scene.getObjectByName('bigCubeMesh').position.set(0,0,-30);
       scene.getObjectByName('bigCubeMesh').visible = true;
     }, 1500)
+
+    showconnections()
 
 
   }
 
 
   if (mode === relations) {
-    targetPosition.x -=  1.5* bigCubeSize;
+    targetPosition.x -=  3* bigCubeSize;
 
     //rot.set(Math.PI / 2, -Math.PI / 2, Math.PI / 2); // 90 degrees in radians
 
@@ -1215,14 +1431,16 @@ function changeMode() {
 
     scene.getObjectByName('bigCubeMesh').visible = false;
     setTimeout(() => {
-      scene.getObjectByName('bigCubeMesh').position.set(10,0,0);
+      scene.getObjectByName('bigCubeMesh').position.set(30,0,0);
       scene.getObjectByName('bigCubeMesh').visible = true;
     }, 1500)
+
+    showconnections()
   }
 
   if (mode === themes) {
 
-    targetPosition.z -= 1.5* bigCubeSize;
+    targetPosition.z -= 3* bigCubeSize;
     rot.set(0, - Math.PI, 0);
 
   
@@ -1231,15 +1449,17 @@ function changeMode() {
 
     scene.getObjectByName('bigCubeMesh').visible = false;
     setTimeout(() => {
-      scene.getObjectByName('bigCubeMesh').position.set(0,0,10);
+      scene.getObjectByName('bigCubeMesh').position.set(0,0,30);
       scene.getObjectByName('bigCubeMesh').visible = true;
     }, 1500)
+
+    showconnections()
 
   }
 
   if (mode === latent) {
 
-    targetPosition.x += bigCubeSize;
+    targetPosition.x += 3* bigCubeSize;
     rot.set(0, Math.PI / 2, 0);
 
     boxes.forEach(box => easeInBoxes(box));
@@ -1248,15 +1468,17 @@ function changeMode() {
 
     scene.getObjectByName('bigCubeMesh').visible = false;
     setTimeout(() => {
-      scene.getObjectByName('bigCubeMesh').position.set(-10,0,0);
+      scene.getObjectByName('bigCubeMesh').position.set(-30,0,0);
       scene.getObjectByName('bigCubeMesh').visible = true;
     }, 1500)
+
+    showconnections()
 
   }
 
   if (mode === sequence) {
 
-    targetPosition.y += bigCubeSize;
+    targetPosition.y += 3* bigCubeSize;
     rot.set(-Math.PI / 2, 0, 0);
 
     boxes.forEach(box => box.visible = false);
@@ -1279,14 +1501,14 @@ function changeMode() {
 
     scene.getObjectByName('bigCubeMesh').visible = false;
     setTimeout(() => {
-      scene.getObjectByName('bigCubeMesh').position.set(0,-10,0);
+      scene.getObjectByName('bigCubeMesh').position.set(0,-30,0);
       scene.getObjectByName('bigCubeMesh').visible = true;
     }, 1500)
 
   }
 
 
-
+  showconnections()
 
 
   gsap.to(camera.position, {
@@ -1476,7 +1698,15 @@ function removeLines(cube) {
 
 
 
-function createOutline(cube, color = 0xF7E0C0) {
+function createOutline(cube) {
+  let color = cube.material.color.getHex();
+console.log(color)
+
+
+  if(color === white) {
+    color = 0xF7E0C0;
+  }
+
   if (cube && !cube.userData.outline) {
     const box = new THREE.Box3().setFromObject(cube);
 
@@ -1706,9 +1936,9 @@ function structurePos() {
       }
     });
 
-    const levelSpacing = 50;   // Distance between levels (y-axis)
-    const groupSpacing = 40;   // Distance between groups (x-axis)
-    const boxSpacing = 5;      // Distance between boxes in clusters (x-axis)
+    const levelSpacing = boxSize * 10;   // Distance between levels (y-axis)
+    const groupSpacing = boxSize * 2;   // Distance between groups (x-axis)
+    const boxSpacing = boxSize / 3;      // Distance between boxes in clusters (x-axis)
     const zFrontFace = bigCubeSize / 2;
 
     const levels = {};
@@ -2035,9 +2265,9 @@ function themesPos() {
 
 
     // Base constants
-    const baseClusterSpacing = 50; // Spacing between cluster centers
-    const baseBoxSpread = 10; // Initial spread within clusters
-    const minClusterDistance = 10; // Minimum distance between cluster centers
+    const baseClusterSpacing = boxSize * 10; // Spacing between cluster centers
+    const baseBoxSpread = boxSize * 3; // Initial spread within clusters
+    const minClusterDistance = boxSize * 3; // Minimum distance between cluster centers
     const faceZ = -bigCubeSize / 2;
 
     // Group cubes by status
@@ -2076,7 +2306,7 @@ function themesPos() {
           }
         });
         clusterCenters[i].x += forceX * 0.1;
-        clusterCenters[i].y += forceY * 0.1;
+        clusterCenters[i].y += forceY * 0.4;
       });
     }
 
@@ -2242,12 +2472,12 @@ function sequencePos() {
     let startObjects = seqBoxes.filter(box => !referencedBoxes.has(box));
 
     // Positioning parameters
-    let xStart = -bigCubeSize / 2;  // Start X position
+    let xStart = -bigCubeSize / 3;  // Start X position
     let yFixed = bigCubeSize / 2;   // Base Y position
     let zStart = -bigCubeSize / 2;  // Start Z position
-    let xSpacing = 250;  // Horizontal distance
-    let ySpacing = 25;   // Vertical distance for branches
-    let rowSpacing = 50; // Space between independent sequences
+    let xSpacing = boxSize * 35;  // Horizontal distance
+    let ySpacing = boxSize * 10;   // Vertical distance for branches
+    let rowSpacing = boxSize * 10; // Space between independent sequences
 
     let destinationArray = {}; // Store target positions
     let placed = new Set();    // Track placed boxes
@@ -2692,15 +2922,14 @@ function updateBoundingBoxes() {
 //simulations
 
 function structureSimulation() {
-  const levelSpacing = 25;
-  const groupSpacing = 40;
-  const boxSpacing = 5;
+  const levelSpacing = boxSize * 10;   // Distance between levels (y-axis)
+  const groupSpacing = boxSize * 2;   // Distance between groups (x-axis)
+  const boxSpacing = boxSize / 3;    
   const zFrontFace = bigCubeSize / 2;
 
   let minX = Infinity, maxX = -Infinity;
   let minY = Infinity, maxY = -Infinity;
   let minZ = Infinity, maxZ = -Infinity;
-
   const levels = {};
   let structureBoxes = boxes.filter(box => (box.userData.children.length > 0 || box.userData.parents.length > 0));
 
@@ -2769,8 +2998,8 @@ function structureSimulation() {
         maxX = Math.max(maxX, x);
         minY = Math.min(minY, y);
         maxY = Math.max(maxY, y);
-        minZ = Math.min(minZ, z);
-        maxZ = Math.max(maxZ, z);
+        minZ = Math.min(minY, z);
+        maxZ = Math.max(maxY, z);
 
         // Assign precomputed positions without animation
 
@@ -2781,11 +3010,20 @@ function structureSimulation() {
     });
   });
 
+  if (minX === -Infinity) minX = 0;
+  if (minY === -Infinity) minX = 0;
+  if (minZ === -Infinity) minX = 0;
+  if (maxX === Infinity) minX = 0;
+  if (maxY === Infinity) minX = 0;
+  if (maxZ === Infinity) minX = 0;
+
+
 
   const result = new THREE.Vector3(
     maxX - minX,
     maxY - minY,
     maxZ - minZ
+
   );
   
   return result;
@@ -2819,9 +3057,9 @@ function themesSimulation() {
       });
   
       // Base constants
-      const baseClusterSpacing = 60; // Spacing between cluster centers
-      const baseBoxSpread = 10; // Initial spread within clusters
-      const minClusterDistance = 10; // Minimum distance between cluster centers
+      const baseClusterSpacing = boxSize * 10; // Spacing between cluster centers
+      const baseBoxSpread = boxSize * 3; // Initial spread within clusters
+      const minClusterDistance = boxSize * 3; // Minimum distance between cluster centers
       const faceZ = -bigCubeSize / 2;
   
       // Group cubes by status
@@ -2860,7 +3098,7 @@ function themesSimulation() {
             }
           });
           clusterCenters[i].x += forceX * 0.1;
-          clusterCenters[i].y += forceY * 0.1;
+          clusterCenters[i].y += forceY * 0.4;
         });
       }
   
@@ -2911,6 +3149,13 @@ function themesSimulation() {
         }
       });
 
+      if (minX === -Infinity) minX = 0;
+      if (minY === -Infinity) minX = 0;
+      if (minZ === -Infinity) minX = 0;
+      if (maxX === Infinity) minX = 0;
+      if (maxY === Infinity) minX = 0;
+      if (maxZ === Infinity) minX = 0;
+
       const result = new THREE.Vector3(
         maxX - minX,
         maxY - minY,
@@ -2947,12 +3192,12 @@ function sequenceSimulation() {
   let startObjects = seqBoxes.filter(box => !referencedBoxes.has(box));
 
   // Positioning parameters
-  let xStart = -bigCubeSize / 2;  // Start X position
+  let xStart = -bigCubeSize / 3;  // Start X position
   let yFixed = bigCubeSize / 2;   // Base Y position
   let zStart = -bigCubeSize / 2;  // Start Z position
-  let xSpacing = 100;  // Horizontal distance
-  let ySpacing = 25;   // Vertical distance for branches
-  let rowSpacing = 50; // Space between independent sequences
+  let xSpacing = boxSize * 35;  // Horizontal distance
+  let ySpacing = boxSize * 5;   // Vertical distance for branches
+  let rowSpacing = boxSize * 5; 
 
   let destinationArray = {}; // Store target positions
   let placed = new Set();    // Track placed boxes
@@ -3038,6 +3283,15 @@ function sequenceSimulation() {
   minX = Math.min(...xposit);
   minY = Math.min(...yposit);
 
+
+
+  if (minX === -Infinity) minX = 0;
+  if (minY === -Infinity) minX = 0;
+  if (minZ === -Infinity) minX = 0;
+  if (maxX === Infinity) minX = 0;
+  if (maxY === Infinity) minX = 0;
+  if (maxZ === Infinity) minX = 0;
+
   const positionSe = new THREE.Vector3(
       maxX - minX,
       maxY - minY,
@@ -3101,11 +3355,11 @@ function adjustBigCubeSize(){
   let { positionSe, rowCount } = sequenceSimulation();
   let positionL = latentSimulation();
 
-
+  let wordsizeAccount = boxSize * 5;
 
   let posMax = Math.max(positionS.x, positionR.x, positionT.x, positionSe.x, positionL.x, positionS.y, positionR.y, positionT.y, positionSe.y, positionL.y, positionS.z, positionR.z, positionT.z, positionSe.z, positionL.z);
 
-
+console.log("podMax", posMax);
 
 //allcube
   const aroundMaterial = new THREE.LineBasicMaterial({
@@ -3115,24 +3369,24 @@ function adjustBigCubeSize(){
     opacity: 1         // Opacity (optional)
   });
 
-    bigCubeSize = posMax;
+    //bigCubeSize = posMax;
 
 
-    const allGeometry = new THREE.BoxGeometry(bigCubeSize + 30, bigCubeSize + 30, bigCubeSize + 30);
+    const allGeometry = new THREE.BoxGeometry(bigCubeSize + wordsizeAccount, bigCubeSize + wordsizeAccount, bigCubeSize + wordsizeAccount);
     const allPosition = new THREE.Vector3(0, 0, 0);
-    addThickEdges(allGeometry, aroundMaterial, allPosition);
+    //addThickEdges(allGeometry, aroundMaterial, allPosition);
 
 
 
 
 //infill
     const cubeMaterial = new THREE.MeshBasicMaterial({
-      color: 0xf7f9f9,
+      color: black,
       wireframe: false,
-      transparent: true,
-      opacity: 0.1
+      transparent: false,
+      opacity: 1
     })
-    const allminusGeometry = new THREE.BoxGeometry(bigCubeSize + 20, bigCubeSize + 20, bigCubeSize + 20);
+    const allminusGeometry = new THREE.BoxGeometry(bigCubeSize + wordsizeAccount / 2, bigCubeSize + wordsizeAccount / 2, bigCubeSize + wordsizeAccount / 2);
     const bigCubeMesh = new THREE.Mesh(allminusGeometry, cubeMaterial);
     bigCubeMesh.name = "bigCubeMesh";
     scene.add(bigCubeMesh);
@@ -3252,19 +3506,6 @@ boxesData.forEach(data => {
   });
 });
 
-
-  // Phase 3: Enhance all boxes after ensuring parents exist
-  // boxesData.forEach(data => {
-  //     const box = createdBoxes.get(data.name);
-
-  //     const parentBoxes = data.parents.map(parentName => createdBoxes.get(parentName)).filter(Boolean);
-  //     const processedRelations = data.relations.map(([relatedName, description]) => 
-  //         [createdBoxes.get(relatedName), description]).filter(([box]) => box);
-  //     const sequenceBoxes = data.sequence.map(sequenceName => createdBoxes.get(sequenceName)).filter(Boolean);
-
-
-  //     enhanceBox(box, parentBoxes, processedRelations, sequenceBoxes);
-  // });
 
 
 

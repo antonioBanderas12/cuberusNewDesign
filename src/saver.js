@@ -37,57 +37,99 @@ import fastJsonParse from 'fast-json-parse';
 
 const firstPrompt = (text, inputWord) => {
 
-  return `How is "${inputWord}" described in the "${text}" ? Only focus on "${inputWord}", do not summarise the whole text.`;
+  return `How is "${inputWord}" described in the "${text}" ? Only focus on "${inputWord}", do not summarise the whole text, stay short.`;
 };
 
 
 
+const secondPrompt = (summaryText) => {
 
-  const prompt = (summaryText) => {
-    return `This is the text: "${summaryText}". Extract all semantically relevant entities in **valid JSON format**.
+  return `This is the text: "${summaryText}". Extract the semantically relevant entities in **valid JSON format**. Do not include too many entities, only the most relevant ones.
 
   For each entity, provide:
   - "name": The entity's name.
   - "description": A short definition or explanation.
   - "status": Its category or classification.
-  - "parents": A list of broader categories or whole-part relationships.
   - "relations": A list of tuples that show relationships with other entities and describe the nature of this relationship.
 
-  Additionally, create **sequences of entities** where each entity naturally follows the other in a structured order. Each sequence should have at least three entities.
 
-  **Example Output:**
+ **Example Output:**
   \`\`\`json
-  {
-    "entities": [
+    [
       {
         "name": "car",
         "description": "A wheeled motor vehicle used for transportation...",
         "status": "transportation mode",
-        "parents": ["transportation", "vehicle"],
         "relations": [
           ["engine", "Powered by internal combustion or electric motors"],
           ["hybrid_car", "Uses both traditional and electric propulsion"]
         ]
       }
-    ],
-    "sequences": [
-      ["car", "engine", "hybrid_car"],
-      ["autonomous_vehicle", "AI_system", "LIDAR"]
     ]
-  }
   \`\`\`
-  Ensure output is in **valid JSON format**, without extra text.`;
-  };
 
 
-
-
-
-
-
-
-
+  Ensure output is in **valid JSON format**, without extra text.
   
+  `;
+};
+
+
+
+
+const thirdPrompt = (summaryText, entities) => { 
+  const entityNames = JSON.stringify(entities.map(e => e.name));
+
+  return `Based on the information provided in "${summaryText}", organize only the following entities: ${entityNames}.
+  
+  - Categorize the entities into superordinate and subordinate relationships.
+  - An entity can be a superordinate entity for multiple entities.
+  - An entity can also be subordinate to multiple superordinate entities.
+  - Return the relationships in the following JSON format, where each array represents a hierarchical relationship:
+  
+  \`\`\`json
+  [
+    ["Superordinate Entity 1", "Subordinate Entity 1", "Subordinate Entity 2"],
+    ["Superordinate Entity 2", "Subordinate Entity 3", "Subordinate Entity 4"],
+    ["Superordinate Entity 1", "Subordinate Entity 3", "Subordinate Entity 5"]
+  ]
+  \`\`\`
+  
+  Ensure that the JSON output is valid and properly formatted.`;
+};
+
+
+
+
+
+
+
+const fourthPrompt = (summaryText, entities) => {
+  const entityNames = JSON.stringify(entities.map(e => e.name));
+
+  return `Based on the information provided in "${summaryText}", identify meaningful sequences among the following entities: ${entityNames}.
+  
+  - Determine sequences in which the entities naturally follow each other in a structured order.
+  - An entity can be part of multiple sequences.
+  - Return the sequences in the following valid JSON format, where each array represents an ordered sequence of entities:
+  
+  \`\`\`json
+  [
+    ["Entity 1", "Entity 2", "Entity 3"],
+    ["Entity 2", "Entity 4", "Entity 5"]
+  ]
+  \`\`\`
+  
+  Ensure that the JSON output is valid, well-structured, and accurately represents meaningful sequences.`;
+};
+
+
+
+
+
+
+
+
 
   async function summarize(text, inputWord) {
     try {
@@ -114,55 +156,62 @@ const firstPrompt = (text, inputWord) => {
 
 
 
+  async function extractEntities(text) {
+    console.log("entities ...");
+
+    try {      
+        const response = await axios.post('http://localhost:11434/api/generate', {
+            model: 'llama3.1:8b',
+            prompt: secondPrompt(text),
+            stream: false,
+            temperature: 0.1
+        });
+
+        if (!response.data || !response.data.response) {
+            throw new Error("API response structure is invalid");
+        }
+
+        console.log(response.data.response);
+
+        try {
+            const cleanedJson = extractJsonUsingRegex(response.data.response);
+            if (!cleanedJson) {
+                throw new Error("Extracted JSON is empty or invalid.");
+            }
+
+            console.log("Parsed JSON:", cleanedJson);
+            return cleanedJson;
+        } catch (error) {
+            console.error("Error parsing JSON:", error.message);
+        }
+
+    } catch (error) {
+        console.error("Error during entity extraction:", error);
+        throw new Error("Entity extraction failed");
+    }
+}
 
 
 
 
-
-
-  async function extractData(text) {
+  async function parents(text, ent) {
+    console.log("parents ...");
     try {
-      console.log("Fetching structured data from LLM...");
       
       const response = await axios.post('http://localhost:11434/api/generate', {
         model: 'llama3.1:8b',
-        prompt: prompt(text),
+        prompt: thirdPrompt(text, ent),
         stream: false,
         temperature: 0.1
       });
-  
-      console.log("Raw LLM response:", response.data.response);
 
-      const cleanedJson = extractJsonUsingRegex(response.data.response);
-        if (!cleanedJson) {
+      const cleanedFinal = extractJsonUsingRegex(response.data.response);
+        if (!cleanedFinal) {
             console.error("Failed to extract valid JSON");
         }
 
   
-      const { entities, sequences } = parseEntities(cleanedJson);
-  
-      if (!entities || entities.length === 0) {
-        throw new Error("No valid entities found in response.");
-      }
-  
-      entities.forEach(entity => {
-        entity.sequence = [];
-      });
-
-      // Integrate sequence data into entities
-      sequences.forEach(seq => {
-        for (let i = 0; i < seq.length - 1; i++) {
-          const currentEntity = entities.find(e => e.name === seq[i]);
-          const nextEntity = entities.find(e => e.name === seq[i + 1]);
-  
-          if (currentEntity) {
-            currentEntity.sequence = currentEntity.sequence || [];
-            currentEntity.sequence.push(nextEntity ? nextEntity.name : null);
-          }
-        }
-      });
-  
-      return entities;
+      return cleanedFinal;
     } catch (error) {
       console.error("Error during entity extraction:", error);
       throw new Error("Entity extraction failed");
@@ -172,28 +221,34 @@ const firstPrompt = (text, inputWord) => {
 
 
 
-  function parseEntities(responseData) {
+
+  async function sequences(text, ent) {
+    console.log("sequences ...");
+
     try {
-      console.log("Parsing JSON...");
+      
+      const response = await axios.post('http://localhost:11434/api/generate', {
+        model: 'llama3.1:8b',
+        prompt: fourthPrompt(text, ent),
+        stream: false,
+        temperature: 0.1
+      });
+
+      const cleanedFinal = extractJsonUsingRegex(response.data.response);
+        if (!cleanedFinal) {
+            console.error("Failed to extract valid JSON");
+        }
+
   
-      // If responseData is already an object, return it
-      if (typeof responseData === 'object' && responseData !== null) {
-        return responseData;
-      }
-  
-      // If it's a string, try parsing it
-      const parsed = JSON5.parse(responseData.trim());
-      if (parsed.entities && parsed.sequences) {
-        return parsed;
-      }
-  
-      throw new Error("Invalid JSON format.");
+      return cleanedFinal;
     } catch (error) {
-      console.error("Error parsing JSON:", error);
-      return { entities: [], sequences: [] };
+      console.error("Error during entity extraction:", error);
+      throw new Error("Entity extraction failed");
     }
   }
-  
+
+
+
 
 
 function extractJsonUsingRegex(responseText) {
@@ -202,18 +257,20 @@ function extractJsonUsingRegex(responseText) {
     return null;
   }
 
-  const match = responseText.match(/\{[\s\S]*\}/);
-  if (!match) {
-    console.error("No JSON found in response");
+  const jsonMatch = responseText.match(/```json([\s\S]*?)```/);
+if (jsonMatch) {
+    const jsonString = jsonMatch[1].trim();
+    try {
+        return JSON.parse(jsonString);
+    } catch (error) {
+        console.error("Error parsing JSON:", error);
+        return null;
+    }
+} else {
+    console.error("JSON block not found");
     return null;
-  }
+}
 
-  try {
-    return JSON5.parse(match[0].trim());
-  } catch (error) {
-    console.error("Error parsing extracted JSON:", error);
-    return null;
-  }
 }
 
 
@@ -232,16 +289,104 @@ app.post('/process-text', async (req, res) => {
 
     let cleanedText = preprocessText(text);
     console.log("input word: ", selectedInput);
+    
     const summary = await summarize(cleanedText, selectedInput)
-
-
-
     console.log("Summary:", summary);
 
+    const extractedEntities = await extractEntities(summary);
+    console.log("extractedEntities:", extractedEntities);
 
-    const extractedData = await extractData(summary);
 
-    res.json(extractedData);
+
+
+// add relations
+const entityNames = new Set(extractedEntities.map(e => e.name)); // Keep track of added entities
+
+extractedEntities.forEach(entity => {
+    entity.relations.forEach(relation => {
+        const [relationName, relationDescription] = relation; // Extract name & description
+
+        if (relationName && !entityNames.has(relationName)) {
+            extractedEntities.push({
+                name: relationName,
+                description: relationDescription || "No description available.",
+                status: "related element",
+                relations: [],
+                parents: []
+            });
+
+            entityNames.add(relationName);
+        }
+    });
+});
+
+
+console.log("Updated extractedEntities with new relation entities:", extractedEntities);
+
+
+
+
+
+
+    const parent = await parents(summary, extractedEntities)
+    console.log("parent:", parent);
+
+
+    const sequence = await sequences(summary, extractedEntities)
+    console.log("sequence:", sequence);
+
+
+
+
+
+
+
+
+    //merge
+
+    // Enhance extractedEntities with parent and sequence information
+    extractedEntities.forEach(entity => {
+      const entityName = entity.name;
+
+      // Find parents: entities listed before the current entity in parent relationships
+      entity.parents = parent
+        .filter(relation => relation.includes(entityName)) // Find parent arrays containing the entity
+        .map(relation => {
+          const index = relation.indexOf(entityName);
+          return index > 0 ? relation[index - 1] : null; // Get the entity before
+        })
+        .filter(Boolean); // Remove null values
+
+      // Find sequences: entities listed after the current entity in sequence relationships
+      entity.sequence = sequence
+        .filter(seq => seq.includes(entityName)) // Find sequences containing the entity
+        .map(seq => {
+          const index = seq.indexOf(entityName);
+          return index < seq.length - 1 ? seq[index + 1] : null; // Get the entity after
+        })
+        .filter(Boolean); // Remove null values
+    });
+
+    console.log("Updated extractedEntities:", extractedEntities);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    res.json(extractedEntities);
   } catch (error) {
     console.error("Error processing request:", error);
     res.status(500).json({ error: 'Internal Server Error', details: error.message });
