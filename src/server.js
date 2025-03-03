@@ -77,31 +77,51 @@ const secondPrompt = (summaryText) => {
 
 
 
-  const thirdPrompt = (summaryText, entities) => {
-    return `Based on the information of the "${summaryText}" organise only the ${JSON.stringify(entities.map(e => e.name))}.
-    
+const thirdPrompt = (summaryText, entities) => { 
+  const entityNames = JSON.stringify(entities.map(e => e.name));
 
-        - organise the ${JSON.stringify(entities.map(e => e.name))} into clusters. A entity can be part of multiple clusters. A entity can be a superordinate entity for other entities. Return the cluster in the following way:
-        
-        \`\`\`json
-          [superordinate entity 1, [list of subordinate entities]],
-          [superordinate entity 2, [list of subordinate entities]]
-        \`\`\`
-        `;
-  };
+  return `Based on the information provided in "${summaryText}", organize only the following entities: ${entityNames}.
+  
+  - Categorize the entities into superordinate and subordinate relationships.
+  - An entity can be a superordinate entity for multiple entities.
+  - An entity can also be subordinate to multiple superordinate entities.
+  - Return the relationships in the following JSON format, where each array represents a hierarchical relationship:
+  
+  \`\`\`json
+  [
+    ["Superordinate Entity 1", "Subordinate Entity 1", "Subordinate Entity 2"],
+    ["Superordinate Entity 2", "Subordinate Entity 3", "Subordinate Entity 4"],
+    ["Superordinate Entity 1", "Subordinate Entity 3", "Subordinate Entity 5"]
+  ]
+  \`\`\`
+  
+  Ensure that the JSON output is valid and properly formatted.`;
+};
 
 
-  const fourthPrompt = (summaryText, entities) => {
-    return `Based on the information of the "${summaryText}" organise only the ${JSON.stringify(entities.map(e => e.name))}.
-    
-        - find sequences within the ${JSON.stringify(entities.map(e => e.name))} that naturally follow each other in a structured order. One element can be part of multiple sequences.
 
-        \`\`\`json
-          [sequence entity 1, sequence entity 2, sequence entity 3],
-          [sequence entity 2, sequence entity 4, sequence entity 5]
-        \`\`\`
-        `;
-  };
+
+
+
+
+const fourthPrompt = (summaryText, entities) => {
+  const entityNames = JSON.stringify(entities.map(e => e.name));
+
+  return `Based on the information provided in "${summaryText}", identify meaningful sequences among the following entities: ${entityNames}.
+  
+  - Determine sequences in which the entities naturally follow each other in a structured order.
+  - An entity can be part of multiple sequences.
+  - Return the sequences in the following valid JSON format, where each array represents an ordered sequence of entities:
+  
+  \`\`\`json
+  [
+    ["Entity 1", "Entity 2", "Entity 3"],
+    ["Entity 2", "Entity 4", "Entity 5"]
+  ]
+  \`\`\`
+  
+  Ensure that the JSON output is valid, well-structured, and accurately represents meaningful sequences.`;
+};
 
 
 
@@ -179,12 +199,12 @@ const secondPrompt = (summaryText) => {
     try {
       
       const response = await axios.post('http://localhost:11434/api/generate', {
-        model: 'deepseek-r1:7b',
+        model: 'llama3.1:8b',
         prompt: thirdPrompt(text, ent),
         stream: false,
         temperature: 0.1
       });
-  
+
       const cleanedFinal = extractJsonUsingRegex(response.data.response);
         if (!cleanedFinal) {
             console.error("Failed to extract valid JSON");
@@ -208,12 +228,12 @@ const secondPrompt = (summaryText) => {
     try {
       
       const response = await axios.post('http://localhost:11434/api/generate', {
-        model: 'deepseek-r1:7b',
+        model: 'llama3.1:8b',
         prompt: fourthPrompt(text, ent),
         stream: false,
         temperature: 0.1
       });
-  
+
       const cleanedFinal = extractJsonUsingRegex(response.data.response);
         if (!cleanedFinal) {
             console.error("Failed to extract valid JSON");
@@ -229,35 +249,6 @@ const secondPrompt = (summaryText) => {
 
 
 
-
-
-
-
-
-
-
-  function parseEntities(responseData) {
-    try {
-      console.log("Parsing JSON...");
-  
-      // If responseData is already an object, return it
-      if (typeof responseData === 'object' && responseData !== null) {
-        return responseData;
-      }
-  
-      // If it's a string, try parsing it
-      const parsed = JSON5.parse(responseData.trim());
-      if (parsed.entities && parsed.sequences) {
-        return parsed;
-      }
-  
-      throw new Error("Invalid JSON format.");
-    } catch (error) {
-      console.error("Error parsing JSON:", error);
-      return { entities: [], sequences: [] };
-    }
-  }
-  
 
 
 function extractJsonUsingRegex(responseText) {
@@ -305,6 +296,38 @@ app.post('/process-text', async (req, res) => {
     const extractedEntities = await extractEntities(summary);
     console.log("extractedEntities:", extractedEntities);
 
+
+
+
+// add relations
+const entityNames = new Set(extractedEntities.map(e => e.name)); // Keep track of added entities
+
+extractedEntities.forEach(entity => {
+    entity.relations.forEach(relation => {
+        const [relationName, relationDescription] = relation; // Extract name & description
+
+        if (relationName && !entityNames.has(relationName)) {
+            extractedEntities.push({
+                name: relationName,
+                description: relationDescription || "No description available.",
+                status: "related element",
+                relations: [],
+                parents: []
+            });
+
+            entityNames.add(relationName);
+        }
+    });
+});
+
+
+console.log("Updated extractedEntities with new relation entities:", extractedEntities);
+
+
+
+
+
+
     const parent = await parents(summary, extractedEntities)
     console.log("parent:", parent);
 
@@ -315,7 +338,55 @@ app.post('/process-text', async (req, res) => {
 
 
 
-    res.json(sequence);
+
+
+
+
+    //merge
+
+    // Enhance extractedEntities with parent and sequence information
+    extractedEntities.forEach(entity => {
+      const entityName = entity.name;
+
+      // Find parents: entities listed before the current entity in parent relationships
+      entity.parents = parent
+        .filter(relation => relation.includes(entityName)) // Find parent arrays containing the entity
+        .map(relation => {
+          const index = relation.indexOf(entityName);
+          return index > 0 ? relation[index - 1] : null; // Get the entity before
+        })
+        .filter(Boolean); // Remove null values
+
+      // Find sequences: entities listed after the current entity in sequence relationships
+      entity.sequence = sequence
+        .filter(seq => seq.includes(entityName)) // Find sequences containing the entity
+        .map(seq => {
+          const index = seq.indexOf(entityName);
+          return index < seq.length - 1 ? seq[index + 1] : null; // Get the entity after
+        })
+        .filter(Boolean); // Remove null values
+    });
+
+    console.log("Updated extractedEntities:", extractedEntities);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    res.json(extractedEntities);
   } catch (error) {
     console.error("Error processing request:", error);
     res.status(500).json({ error: 'Internal Server Error', details: error.message });
