@@ -384,8 +384,6 @@ console.log("Updated extractedEntities with new relation entities:", extractedEn
 
 
 
-
-
     res.json(extractedEntities);
   } catch (error) {
     console.error("Error processing request:", error);

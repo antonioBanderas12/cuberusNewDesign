@@ -8,20 +8,35 @@ import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry';
 import { FontLoader } from 'three/examples/jsm/loaders/FontLoader';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry';
 import OpenAI from "openai";
-
-
+import pluralize from 'pluralize';
+import nlp from 'compromise';
 import * as pdfjsLib from 'pdfjs-dist';
-
-
 import { PCA } from 'ml-pca';
-
+import compromise from 'compromise';
 
 
 
 //resizing
+
+
+const threejsContainer = document.getElementById('threejs-container');
+const descriptionContainer = document.getElementById('description-container');
+
+// ResizeObserver to monitor changes in the threejs container's size
+const resizeObserver = new ResizeObserver(() => {
+  // Set the width of the description container to match the three.js container
+  descriptionContainer.style.width = `${threejsContainer.offsetWidth}px`;
+});
+
+// Start observing the three.js container
+resizeObserver.observe(threejsContainer);
+
+
+
 const resizer = document.getElementById('resizer');
 const leftPanel = document.getElementById('pdf-container');
 const rightPanel = document.getElementById('threejs-container');
+const inputWord = document.getElementById('selectedInput');    
 let camera, renderer, originalAspectRatio;
 let isResizing = false;
 
@@ -38,7 +53,7 @@ function resize(event) {
     rightPanel.style.width = `${100 - newWidth}%`;
 
     const resizerRect = resizer.getBoundingClientRect();
-    document.getElementById("summary").style.left= `${resizerRect.left}px`;
+    //document.getElementById("summary").style.left= `${resizerRect.left}px`;
 
 
     // Update canvas size and camera aspect ratio
@@ -230,6 +245,8 @@ function renderPDF() {
      if (selectedText) {
         selectedInput = selectedText;
         console.log("Selected Word:", selectedInput);
+        const selectedInputDiv = document.getElementById("summary");
+        selectedInputDiv.textContent = selectedText;
      }
  });
 
@@ -484,18 +501,33 @@ function initializeThreeJS(boxDataList){
 //createBoxes
 function createBox(name, description, status) {
 
-  // if (!statusColorMap[status]) {
-  //   statusColorMap[status] = generateRandomColor();
-  // }
 
-  // const colour = statusColorMap[status];
 
 let colour = white;
 
-if (name.toLowerCase() === selectedInput.toLowerCase()) {
+const normalizedName = normalizeEntityName(name);
+const normalizedInput = normalizeEntityName(selectedInput);
+
+// Check for adjective-noun merge
+let docName = compromise(name);
+let docInput = compromise(selectedInput);
+let adjName = docName.adjectives().out('array');
+let nounName = docName.nouns().out('array');
+let adjInput = docInput.adjectives().out('array');
+let nounInput = docInput.nouns().out('array');
+
+// If both are adjective-noun pairs, compare them
+const mergedName = adjName.length && nounName.length ? `${adjName[0]} ${nounName[0]}` : normalizedName;
+const mergedInput = adjInput.length && nounInput.length ? `${adjInput[0]} ${nounInput[0]}` : normalizedInput;
+
+
+
+
+// Use fuzzy matching to allow slight differences
+if (jaroWinkler(mergedName, mergedInput) >= 0.85) {
   colour = 0xCF6A84;
-}else if (status === 'related entity') {
-  colour = 0xE5E0B7;
+}else if (status === 'related element' || status === 'superordinate element') {
+  colour = 0x008080;
 }
 
 
@@ -648,82 +680,43 @@ console.log(boxDataList)
 
 
 
-
-// function updateZLevels() {
-//   function updateLevel(box) {
-//       if (!box.userData.parents.length) {
-//           // Root node, start from level 0
-//           box.userData.level = 0;
-//       } else {
-//           // Find the maximum level of all parents
-//           let maxParentLevel = Math.max(...box.userData.parents.map(parent => parent.userData.level));
-//           box.userData.level = maxParentLevel + 150; // Place child below lowest-level parent
-//       }
-      
-//       // Update position
-//       box.position.z = box.userData.level;
-//   }
-
-//   // Process all boxes iteratively (not recursively) to ensure all parents are updated first
-//   let remainingBoxes = [...boxes];
-
-//   while (remainingBoxes.length > 0) {
-//       let updatedBoxes = [];
-
-//       remainingBoxes.forEach(box => {
-//           let allParentsUpdated = box.userData.parents.every(parent => parent.userData.level !== undefined);
-
-//           if (allParentsUpdated) {
-//               updateLevel(box);
-//               updatedBoxes.push(box);
-//           }
-//       });
-
-//       // Remove processed boxes from the remaining list
-//       remainingBoxes = remainingBoxes.filter(box => !updatedBoxes.includes(box));
-//   }
-// }
-
-
-
-
-
-
 function updateZLevels() {
   function updateLevel(box) {
-      if (!box.userData.parents.length) {
-          // Root node, start from level 0
-          box.userData.level = 0;
-      } else {
-          // Find the maximum level of all parents
-          let maxParentLevel = Math.max(...box.userData.parents.map(parent => parent.userData.level));
-          box.userData.level = maxParentLevel + 150; // Place child below lowest-level parent
+    if (!box.userData.parents.length) {
+      console.log(`Root node detected: ${box.userData.name}`);
+      box.userData.level = 0;
+    } else {
+      // Ensure parents exist before calculating level
+      let validParents = box.userData.parents.filter(parent => parent.userData.level !== undefined);
+      if (validParents.length === 0) {
+        console.warn(`Parents of ${box.userData.name} are not assigned levels yet.`);
+        return;
       }
-      
-      // Update position
-      box.position.z = box.userData.level;
+
+      let maxParentLevel = Math.max(...validParents.map(parent => parent.userData.level));
+      box.userData.level = maxParentLevel + 150; // Place child below lowest-level parent
+      console.log(`${box.userData.name} is assigned level ${box.userData.level}`);
+    }
+
+    box.position.z = box.userData.level;
   }
 
-  // Process all boxes iteratively (not recursively) to ensure all parents are updated first
   let remainingBoxes = [...boxes];
 
   while (remainingBoxes.length > 0) {
-      let updatedBoxes = [];
+    let updatedBoxes = [];
 
-      remainingBoxes.forEach(box => {
-          let allParentsUpdated = box.userData.parents.every(parent => parent.userData.level !== undefined);
+    remainingBoxes.forEach(box => {
+      let allParentsUpdated = box.userData.parents.every(parent => parent.userData.level !== undefined);
+      if (allParentsUpdated) {
+        updateLevel(box);
+        updatedBoxes.push(box);
+      }
+    });
 
-          if (allParentsUpdated) {
-              updateLevel(box);
-              updatedBoxes.push(box);
-          }
-      });
-
-      // Remove processed boxes from the remaining list
-      remainingBoxes = remainingBoxes.filter(box => !updatedBoxes.includes(box));
+    remainingBoxes = remainingBoxes.filter(box => !updatedBoxes.includes(box));
   }
 }
-
 
 
 
@@ -736,10 +729,22 @@ function updateZLevels() {
   window.addEventListener('mousemove', onMouseMove, false);
 
 
+  function activateButton(button) {
+    // Remove 'active' class from all buttons
+    const buttons = document.querySelectorAll('#roll-buttons-container button');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    
+    // Add 'active' class to the clicked button
+    button.classList.add('active');
+  }
+
+
+
 
 //changeMode
 // structure button
 document.getElementById('structure').addEventListener('click', () => {
+    activateButton(document.getElementById('structure'));  
     mode = structure;
     structurePos();
     changeMode()
@@ -748,6 +753,7 @@ document.getElementById('structure').addEventListener('click', () => {
 
 // relations button
 document.getElementById('relations').addEventListener('click', () => {
+  activateButton(document.getElementById('relations'));
   mode = relations;
   changeMode()
   relationsPos();
@@ -756,6 +762,7 @@ document.getElementById('relations').addEventListener('click', () => {
 
 // relations button
 document.getElementById('themes').addEventListener('click', () => {
+  activateButton(document.getElementById('themes'));
   mode = themes;
   themesPos();
   changeMode()
@@ -763,6 +770,7 @@ document.getElementById('themes').addEventListener('click', () => {
 
 //latent button
 document.getElementById('latent').addEventListener('click', () => {
+  activateButton(document.getElementById('latent'));
   latentPos();
   mode = latent;
   changeMode()
@@ -770,6 +778,7 @@ document.getElementById('latent').addEventListener('click', () => {
 
 
   document.getElementById('sequence').addEventListener('click', () => {
+    activateButton(document.getElementById('sequence'));
     sequencePos();
     mode = sequence;
     changeMode()
@@ -968,11 +977,55 @@ function onHover(cube) {
 // helpers
 // helpers
 // helpers
+// helperss
 // helpers
-// helpers
 
 
 
+const normalizeEntityName = (name) => {
+  return pluralize.singular(name.toLowerCase());
+};
+
+
+function jaroWinkler(s1, s2) {
+  let m = 0, t = 0, l = 0;
+  let maxDist = Math.floor(Math.max(s1.length, s2.length) / 2) - 1;
+  let s1Matches = new Array(s1.length).fill(false);
+  let s2Matches = new Array(s2.length).fill(false);
+
+  for (let i = 0; i < s1.length; i++) {
+      let start = Math.max(0, i - maxDist);
+      let end = Math.min(i + maxDist + 1, s2.length);
+
+      for (let j = start; j < end; j++) {
+          if (s2Matches[j]) continue;
+          if (s1[i] !== s2[j]) continue;
+          s1Matches[i] = true;
+          s2Matches[j] = true;
+          m++;
+          break;
+      }
+  }
+  if (m === 0) return 0;
+
+  let k = 0;
+  for (let i = 0; i < s1.length; i++) {
+      if (!s1Matches[i]) continue;
+      while (!s2Matches[k]) k++;
+      if (s1[i] !== s2[k]) t++;
+      k++;
+  }
+  t /= 2;
+
+  for (let i = 0; i < Math.min(4, s1.length, s2.length); i++) {
+      if (s1[i] === s2[i]) l++;
+      else break;
+  }
+
+  let jaro = ((m / s1.length) + (m / s2.length) + ((m - t) / m)) / 3;
+  let jaroWinkler = jaro + l * 0.1 * (1 - jaro);
+  return jaroWinkler;
+}
 
 
 
@@ -1209,12 +1262,13 @@ function manNavigation() {
 };
 
 function createConstantLines(startCube, endCube, color = white) {
-  const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.2 });
+  const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.2, depthWrite: false });
   const geometry = new THREE.BufferGeometry().setFromPoints([
     startCube.position.clone(),
     endCube.position.clone()
   ]);
   const line = new THREE.Line(geometry, material);
+  line.renderOrder = 0;
   scene.add(line);
 
   // Store the line in userData of the startCube for cleanup
@@ -1673,13 +1727,14 @@ function easeOutBoxes(cube) {
 
 
 // hovering
-function createLine(startCube, endCube, color = 0xF7E0C0) {
-  const material = new THREE.LineBasicMaterial({ color });
+function createLine(startCube, endCube, color = hoverColor) {
+  const material = new THREE.LineBasicMaterial({ color, linewidth: 7, opacity: 1,  depthWrite: false, });
   const geometry = new THREE.BufferGeometry().setFromPoints([
     startCube.position.clone(),
     endCube.position.clone()
   ]);
   const line = new THREE.Line(geometry, material);
+  line.renderOrder = 0;
   scene.add(line);
 
   // Store the line in userData of the startCube for cleanup
@@ -1744,12 +1799,13 @@ console.log(color)
       color,
       transparent: false,
       opacity: 0.5,
-      depthWrite: false, // Ensures it doesn't block objects behind it
+      depthWrite: true, // Ensures it doesn't block objects behind it
       side: THREE.DoubleSide // Make sure the outline is visible from both sides
     });
 
     // Create mesh and scale it to form an oval
     const outlineMesh = new THREE.Mesh(circleGeometry, outlineMaterial);
+    outlineMesh.renderOrder = 1;
     
 
     // const outlineMesh = new THREE.Mesh(boxgeometry, outlineMaterial);
@@ -2266,7 +2322,7 @@ function themesPos() {
 
     // Base constants
     const baseClusterSpacing = boxSize * 10; // Spacing between cluster centers
-    const baseBoxSpread = boxSize * 3; // Initial spread within clusters
+    const baseBoxSpread = boxSize * 7; // Initial spread within clusters
     const minClusterDistance = boxSize * 3; // Minimum distance between cluster centers
     const faceZ = -bigCubeSize / 2;
 
@@ -2452,6 +2508,15 @@ function latentPos() {
 
 
 
+
+
+
+
+
+
+
+
+
 function sequencePos() {
 
   setTimeout(() => {
@@ -2579,6 +2644,140 @@ function sequencePos() {
 
   }, 500);
 }
+
+
+
+
+
+
+
+// function sequencePos() {
+
+//   setTimeout(() => {
+//     // Fix rotations for all boxes
+//     boxes.forEach(cube => {
+//       cube.rotation.set(-Math.PI / 2, 0, 0);
+//       cube.userData.boundBox.rotation.set(-Math.PI / 2, 0, 0);
+//     });
+
+//     // Find all referenced boxes
+//     let referencedBoxes = new Set();
+//     boxes.forEach(box => {
+//       box.userData.sequence.forEach(seq => referencedBoxes.add(seq));
+//     });
+
+//     let seqBoxes = boxes.filter(box => box.userData.sequence.length > 0);
+//     // Identify start objects (not referenced anywhere)
+//     let startObjects = seqBoxes.filter(box => !referencedBoxes.has(box));
+
+//     // Positioning parameters
+//     let xStart = -bigCubeSize / 3;  // Start X position
+//     let yFixed = bigCubeSize / 2;   // Base Y position
+//     let zStart = -bigCubeSize / 2;  // Start Z position
+//     let xSpacing = boxSize * 35;  // Horizontal distance
+//     let ySpacing = boxSize * 10;   // Vertical distance for branches
+//     let rowSpacing = boxSize * 10; // Space between independent sequences
+
+//     let destinationArray = {}; // Store target positions
+//     let placed = new Set();    // Track placed boxes
+//     let queue = [];            // Queue for BFS traversal
+
+//     // Position start objects in a vertical row
+//     startObjects.forEach((box, index) => {
+//         let xPos = xStart;
+//         let zPos = zStart + index * rowSpacing; // Each sequence starts on a different Z line
+//         destinationArray[box.userData.name] = { x: xPos, y: yFixed, z: zPos };
+//         placed.add(box);
+//         queue.push({ box, x: xPos, y: yFixed, z: zPos }); // Store zPos in queue
+//     });
+
+
+
+
+
+//     // Position subsequent objects with true alternating branching
+//     while (queue.length > 0) {
+//         let { box, x, y, z } = queue.shift(); // Get the z position from queue
+//         let nextX = x + xSpacing; // Move next boxes to the right
+//         let branchCount = box.userData.sequence.length;
+
+//         if (branchCount === 1) {
+//             // Single continuation follows parent’s z position
+//             let nextBox = box.userData.sequence[0];
+//             if (!placed.has(nextBox)) {
+//                 destinationArray[nextBox.userData.name] = { x: nextX, y: y, z: z };
+//                 placed.add(nextBox);
+//                 queue.push({ box: nextBox, x: nextX, y: y, z: z });
+//             }
+//         } else {
+//             // Multiple branches: alternate between above and below
+//             let yDirection = 1; // Start with up movement
+
+//             box.userData.sequence.forEach((nextBox, i) => {
+//                 if (!placed.has(nextBox)) {
+//                     let newY = y + (yDirection * Math.ceil(i / 2) * ySpacing);
+//                     yDirection *= -1; // Toggle direction (up/down)
+
+//                     // Keep the same z-position as parent
+//                     destinationArray[nextBox.userData.name] = { x: nextX, y: newY, z: z };
+//                     placed.add(nextBox);
+//                     queue.push({ box: nextBox, x: nextX, y: newY, z: z });
+//                 }
+//             });
+//         }
+//     }
+
+//  let face = bigCubeSize / 2;
+
+
+
+
+
+
+
+
+
+//     // First pass: Calculate max X positions
+//     let maxXPositions = {};
+//     boxes.forEach(cube => {
+//       let pos = destinationArray[cube.userData.name];
+//       if (pos) {
+//         let refArray = boxes.filter(c => c.userData.sequence.includes(cube))
+//                             .map(c => destinationArray[c.userData.name]);
+        
+//         let maxX = Math.max(-1000, ...refArray.map(posRef => posRef ? posRef.x : 0));
+//         maxXPositions[cube.userData.name] = maxX + xSpacing;
+
+//       }
+//     });
+
+
+//     boxes.forEach(cube => {
+//       let pos = destinationArray[cube.userData.name];
+      
+//       if (pos) {
+//         if (pos.x > 0){
+//         pos.x = maxXPositions[cube.userData.name];
+//         }
+
+
+//         gsap.to(cube.position, {
+//           duration: 1,
+//           x: pos.x,
+//           y: face, // Adjust for scene positioning
+//           z: pos.z + pos.y,
+//           ease: "power2.inOut",
+//           onUpdate: () => {
+//             cube.userData.boundBox.position.copy(cube.position);
+//           }
+//         });
+//       }
+//     });
+
+
+
+//   }, 500);
+// }
 
 
 
@@ -3473,6 +3672,7 @@ function processAllBoxes(boxesData) {
       data.parents.forEach(parentName => {
           if (!createdBoxes.has(parentName)) {
               // Add missing parent box before processing children
+              console.warn(`Parent ${parentName} for ${data.name} is missing. Creating...`);
               boxesData.push(prepareBoxData(parentName, null, null, null, null, null));
               let createdNew = createBox(parentName, "superordinate element", "superordinate element");
               createdBoxes.set(parentName, createdNew);
@@ -3480,6 +3680,10 @@ function processAllBoxes(boxesData) {
           }
       });
   });
+
+  
+
+
 
   boxesData.forEach(data => {
     data.relations.forEach(([relation, description]) => {

@@ -43,11 +43,11 @@ const { JaroWinklerDistance } = natural;
 
 const firstPrompt = (text, inputWord) => {
 
-  return `How is "${inputWord}" described in the "${text}" ? Focus on "${inputWord}", do not summarise the whole text.`;
+  return `How is "${inputWord}" described in the "${text}"? Focus on "${inputWord}", do not summarise the whole text, but be detailled in regards towards "${inputWord}".`;
 };
 
 
-
+//  Do not include too many entities, only the most relevant ones.
 const secondPrompt = (summaryText) => {
 
   return `This is the text: "${summaryText}". Extract the semantically relevant entities in **valid JSON format**. Do not include too many entities, only the most relevant ones.
@@ -83,8 +83,8 @@ const secondPrompt = (summaryText) => {
 
 
 
-const thirdPrompt = (summaryText, entities) => { 
-  const entityNames = JSON.stringify(entities.map(e => e.name));
+const thirdPrompt = (summaryText, ent) => { 
+  const entityNames = JSON.stringify(ent.map(e => e.name));
 
   return `Based on the information provided in "${summaryText}", organize only the following entities: ${entityNames}.
   
@@ -177,13 +177,18 @@ const fourthPrompt = (summaryText, entities) => {
             throw new Error("API response structure is invalid");
         }
 
+
+
+        console.log("raw:", response.data.response);
+
+
+
         try {
             const cleanedJson = extractJsonUsingRegex(response.data.response);
             if (!cleanedJson) {
                 throw new Error("Extracted JSON is empty or invalid.");
             }
 
-            console.log("Parsed JSON:", cleanedJson);
             return cleanedJson;
         } catch (error) {
             console.error("Error parsing JSON:", error.message);
@@ -290,47 +295,32 @@ if (jsonMatch) {
 
 // synonym handling
 
-const mergeAdjectivesAndNounsFromEntities = (entities) => {
-  const mergedEntities = [];
-
-  entities.forEach(entity => {
-    // Check if the entity contains an adjective and a noun
-    if (entity.name && entity.name.split(' ').length > 1) {
-      const words = entity.name.split(' ');
-      
-      // Check if the first word is an adjective and the second one is a noun
-      const doc = compromise(entity.name);  // Create a compromise document from entity name
-
-      let adjectives = doc.adjectives().out('array');
-      let nouns = doc.nouns().out('array');
-      
-      // If both adjective and noun are detected, merge them as a new entity
-      if (adjectives.length && nouns.length) {
-        mergedEntities.push({
-          name: `${adjectives[0]} ${nouns[0]}`,  // Combine adjective and noun
-          description: `Merged entity: ${adjectives[0]} ${nouns[0]}`,
-          status: 'merged entity',
-        });
-      }
-    }
-  });
-
-  return mergedEntities;
-};
-
 // Process and normalize entities
 const normalizeEntityName = (name) => {
   return pluralize.singular(name.toLowerCase());
 };
 
 // Fuzzy matching function
-const findSimilarEntity = (name, entityNames) => {
+function findSimilarEntity(name, entityNames){
   const threshold = 0.8; // Adjust based on similarity needs
   const nameLC = name.toLowerCase();
   return [...entityNames].find(existingName =>
     JaroWinklerDistance(nameLC, existingName.toLowerCase()) >= threshold
   );
 };
+
+
+function singularize(word) {
+  // Simple plural to singular conversion (can be expanded for better handling)
+  if (word.endsWith('s')) {
+    return word.slice(0, -1);
+  }
+  return word;
+}
+
+
+
+
 
 // Preprocess, summarize, and extract entities
 app.post('/process-text', async (req, res) => {
@@ -342,103 +332,202 @@ app.post('/process-text', async (req, res) => {
       return res.status(400).json({ error: 'Text and Input Word are required' });
     }
 
-    // Preprocess text
+//preprocess
     let cleanedText = preprocessText(text);
     console.log("input word: ", selectedInput);
 
-    // Summarize
+//summarize
     const summary = await summarize(cleanedText, selectedInput);
     console.log("Summary:", summary);
 
-    // Extract Entities
+//extract entities
     let extractedEntities = await extractEntities(summary);
     console.log("extractedEntities:", extractedEntities);
 
-    // Merge adjectives and substantives from extracted entities
-    const mergedEntities = mergeAdjectivesAndNounsFromEntities(extractedEntities);
-    console.log("Merged Adjectives and Nouns from Entities:", mergedEntities);
 
-    // Normalize and merge similar entities
-    let entityMap = new Map();
 
-    extractedEntities.forEach(entity => {
-      let normalizedName = normalizeEntityName(entity.name.toLowerCase());
-      let existingEntityName = findSimilarEntity(normalizedName, entityMap.keys());
-      let finalName = existingEntityName || normalizedName;
+//normalise writing
+// First, normalize entity names and relations
+let normalizedEntities = extractedEntities.map(entity => {
+  // Normalize the name of the entity
+  entity.name = entity.name.toLowerCase(); // Lowercase the entity name
 
-      if (!entityMap.has(finalName)) {
-        entityMap.set(finalName, { ...entity, name: finalName });
-      } else {
-        let existingEntity = entityMap.get(finalName);
-        existingEntity.parents = [...new Set([...existingEntity.parents, ...entity.parents])];
-        existingEntity.sequence = [...new Set([...existingEntity.sequence, ...entity.sequence])];
+  // Create a set of all entity names for lookup
+  const entityNames = new Set(extractedEntities.map(entity => entity.name.toLowerCase()));
+
+  // Normalize relation names to lowercase
+  entity.relations = entity.relations.map(relation => {
+    return relation.map(rel => {
+      // Lowercase the relation name to ensure uniformity
+      let lowerCase = rel.toLowerCase();
+      let singular = singularize(rel); // Singular form of the relation
+      let similar = findSimilarEntity(rel, entityNames); // Fuzzy match using Jaro-Winkler distance
+
+      // Return normalized relation names based on the checks
+      if (entityNames.has(lowerCase)) {
+        return lowerCase; // Return the exact match (case-insensitive)
+
+      } else if (entityNames.has(singular)) {
+        return singular; // Return the singular form if it exists
+
+      }else if (similar !== undefined) {
+        return similar; // Return a similar entity if found by fuzzy match
       }
+
+      // Otherwise, return the original relation if no match is found
+      return rel;
     });
+  });
 
-    // Add merged adjective-noun entities to the map
-    mergedEntities.forEach(mergedEntity => {
-      const normalizedEntity = normalizeEntityName(mergedEntity.name);
-      if (!entityMap.has(normalizedEntity)) {
-        entityMap.set(normalizedEntity, { name: mergedEntity.name, description: mergedEntity.description });
-      }
-    });
+  return entity; // Return the normalized entity
+});
 
-    extractedEntities = [...entityMap.values()];
+console.log("normalised", normalizedEntities)
 
-    // Add related entities
-    extractedEntities.forEach(entity => {
-      if (entity.relations && Array.isArray(entity.relations)) {
+
+
+// add relations
+    const entityNamesRel = new Set(normalizedEntities.map(e => e.name)); // Keep track of added entities
+
+    normalizedEntities.forEach(entity => {
         entity.relations.forEach(relation => {
-          const relationName = pluralize.singular(relation[0]);
+            const [relationName, relationDescription] = relation; // Extract name & description
 
-          if (!entityMap.has(relationName)) {
-            entityMap.set(relationName, {
-              name: relationName,
-              description: "No description available.",
-              status: "related entity",
-              relations: []
-            });
-          }
+            let normalisedRelName = relationName.toLowerCase(); 
+
+            if (normalisedRelName && !entityNamesRel.has(normalisedRelName)) {
+              normalizedEntities.push({
+                    name: normalisedRelName,
+                    description: relationDescription || "No description available.",
+                    status: "related element",
+                    relations: [],
+                    parents: []
+                });
+
+                entityNamesRel.add(normalisedRelName);
+            }
         });
-      }
     });
 
-    // Update list after related entities were added
-    extractedEntities = [...entityMap.values()];
 
-    // Parents and Sequences (same as before)
-    const parent = await parents(summary, extractedEntities);
-    const sequence = await sequences(summary, extractedEntities);
 
-    // Merge parent & sequence data
-    extractedEntities.forEach(entity => {
-      const entityName = entity.name;
 
-      entity.parents = parent
-        .filter(relation => relation.some(name => pluralize.singular(name.toLowerCase()) === entityName))
-        .map(relation => {
-          const index = relation.findIndex(name => pluralize.singular(name.toLowerCase()) === entityName);
-          return index > 0 ? pluralize.singular(relation[index - 1].toLowerCase()) : null;
-        })
-        .filter(Boolean);
 
-      entity.sequence = sequence
-        .filter(seq => seq.some(name => pluralize.singular(name.toLowerCase()) === entityName))
-        .map(seq => {
-          const index = seq.findIndex(name => pluralize.singular(name.toLowerCase()) === entityName);
-          return index < seq.length - 1 ? pluralize.singular(seq[index + 1].toLowerCase()) : null;
-        })
-        .filter(Boolean);
-    });
 
-    console.log("Updated extractedEntities:", extractedEntities);
 
-    res.json(extractedEntities);
+
+//parents
+    const parent = await parents(summary, normalizedEntities);
+
+
+//sequences
+    const sequence = await sequences(summary, normalizedEntities);
+
+//merge
+    let normalizedParents =parent.map(relationship => {
+      return relationship.map(entity => {
+
+      const entityNamesParents = new Set(normalizedEntities.map(entity => entity.name.toLowerCase()));
+
+          // Lowercase the relation name to ensure uniformity
+          let lowerCase = entity.toLowerCase();
+          let singular = singularize(entity); // Singular form of the relation
+          let similar = findSimilarEntity(entity, entityNamesParents); // Fuzzy match using Jaro-Winkler distance
+
+          // Return normalized relation names based on the checks
+          if (entityNamesParents.has(lowerCase)) {
+            return lowerCase; // Return the exact match (case-insensitive)
+
+          } else if (entityNamesParents.has(singular)) {
+            return singular; // Return the singular form if it exists
+
+          }else if (similar !== undefined) {
+            return similar; // Return a similar entity if found by fuzzy match
+          }
+
+          return entity; // Return the original entity if no match is found
+        });
+      });
+
+    console.log("normalizedParents:", normalizedParents);
+
+
+    let normalizedSequences = sequence.map(relationship => {
+      return relationship.map(entity => {
+     
+      const entityNamesSeq = new Set(normalizedEntities.map(entity => entity.name.toLowerCase()));
+
+          let lowerCase = entity.toLowerCase();
+          let singular = singularize(entity);
+          let similar = findSimilarEntity(entity, entityNamesSeq);
+
+          if (entityNamesSeq.has(lowerCase)) {
+            return lowerCase;
+
+          } else if (entityNamesSeq.has(singular)) {
+            return singular;
+
+          }else if (similar !== undefined) {
+            return similar;
+          }
+          return entity; // Return the original entity if no match is found
+        });
+      });
+
+    console.log("normalizedSequences:", normalizedSequences);
+
+
+
+
+
+let mergedEntities = normalizedEntities.map(entity => {
+  const entityNameMerge = entity.name.toLowerCase(); // Normalize the entity name
+
+  // Normalize and find parents: entities listed before the current entity in parent relationships
+  entity.parents = normalizedParents
+  .filter(relation => relation.includes(entityNameMerge)) // Find parent arrays containing the entity
+  .map(relation => {
+    const index = relation.indexOf(entityNameMerge);
+    return index > 0 ? relation[index - 1] : null; // Get the entity before
+  })
+  .filter(Boolean); // Remove null values
+
+
+
+// Find sequences: entities listed after the current entity in sequence relationships
+entity.sequence = normalizedSequences
+  .filter(seq => seq.includes(entityNameMerge)) // Find sequences containing the entity
+  .map(seq => {
+    const index = seq.indexOf(entityNameMerge);
+    return index < seq.length - 1 ? seq[index + 1] : null; // Get the entity after
+  })
+  .filter(Boolean);
+  return entity; // Return the merged entity
+});
+
+
+
+
+
+// Log the enhanced entities to check if parents are now assigned properly
+console.log("enhanced entities:", mergedEntities);
+
+
+
+
+//send
+    res.json(mergedEntities);
   } catch (error) {
     console.error("Error processing request:", error);
     res.status(500).json({ error: 'Internal Server Error', details: error.message });
   }
 });
+
+
+
+
+
+
 
 
 
