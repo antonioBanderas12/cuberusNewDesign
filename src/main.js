@@ -25,7 +25,7 @@ const descriptionContainer = document.getElementById('description-container');
 // ResizeObserver to monitor changes in the threejs container's size
 const resizeObserver = new ResizeObserver(() => {
   // Set the width of the description container to match the three.js container
-  descriptionContainer.style.width = `${threejsContainer.offsetWidth}px`;
+  descriptionContainer.style.width = `${threejsContainer.offsetWidth * 0.8}px`; // Adjust width to 80% of threejsContainer
 });
 
 // Start observing the three.js container
@@ -42,6 +42,10 @@ let isResizing = false;
 
 resizer.addEventListener('mousedown', (event) => {
   isResizing = true;
+
+  document.body.style.userSelect = 'none';
+  document.body.style.pointerEvents = 'none';
+
   document.addEventListener('mousemove', resize);
   document.addEventListener('mouseup', stopResize);
 });
@@ -63,25 +67,29 @@ function resize(event) {
 
 
 
-    if (renderer && camera) {
-      // Update renderer size
-      renderer.setSize(rightPanelWidth, newHeight);
-      // Update camera aspect ratio
-      camera.aspect = rightPanelWidth / newHeight;
-      camera.updateProjectionMatrix();
-    }
+    // if (renderer && camera) {
+    //   // Update renderer size
+    //   renderer.setSize(rightPanelWidth, newHeight);
+    //   // Update camera aspect ratio
+    //   camera.aspect = rightPanelWidth / newHeight;
+    //   camera.updateProjectionMatrix();
+    // }
 
     // Ensure the canvas is positioned and sized correctly within the container
     const canvas = document.querySelector('#threejs-container canvas');
-    if (canvas) {
-      canvas.style.width = `${rightPanelWidth}px`;
-      canvas.style.height = `${newHeight}px`;
-    }
+    // if (canvas) {
+    //   canvas.style.width = `${rightPanelWidth}px`;
+    //   canvas.style.height = `${newHeight}px`;
+    // }
   }
 }
 
 function stopResize() {
   isResizing = false;
+
+  document.body.style.userSelect = '';
+  document.body.style.pointerEvents = '';
+
   document.removeEventListener('mousemove', resize);
   document.removeEventListener('mouseup', stopResize);
 }
@@ -246,8 +254,8 @@ function renderPDF() {
         selectedInput = selectedText;
         console.log("Selected Word:", selectedInput);
         const selectedInputDiv = document.getElementById("summary");
-        selectedInputDiv.textContent = selectedText;
-     }
+        selectedInputDiv.innerHTML = `generate mappings for: <span style="color: #CF6A84">${selectedInput}</span>`;
+      }
  });
 
 
@@ -297,6 +305,7 @@ async function fetchSummary() {
 
   if (!file) {
     alert("Please select a PDF file.");
+    isRequestInProgress = false; // Reset flag
     return null;
   }
 
@@ -323,6 +332,7 @@ async function fetchSummary() {
         if (!selectedInput) {
           console.error("selectedInput is undefined!");
           reject("Missing selectedInput");
+          isRequestInProgress = false; // Reset flag
           return;
         }
 
@@ -340,6 +350,7 @@ async function fetchSummary() {
         } catch (err) {
           console.error("Failed to parse JSON response:", err);
           reject("Invalid JSON format");
+          isRequestInProgress = false; // Reset flag
           return;
         }
 
@@ -348,6 +359,7 @@ async function fetchSummary() {
         if (!Array.isArray(data)) {
           console.error("Unexpected response format:", data);
           reject("Invalid response format");
+          isRequestInProgress = false; // Reset flag
           return;
         }
 
@@ -356,12 +368,15 @@ async function fetchSummary() {
       } catch (error) {
         console.error("Error extracting text from PDF or fetching summary:", error);
         reject(error);
+      }finally {
+        isRequestInProgress = false; // Reset flag
       }
     };
 
     reader.onerror = function (event) {
       console.error("FileReader error:", event.target.error);
       reject(event.target.error);
+      isRequestInProgress = false; // Reset flag
     };
 
     reader.readAsArrayBuffer(file);
@@ -399,7 +414,17 @@ async function initializePage() {
 
 
   //three.js logic
-function initializeThreeJS(boxDataList){ 
+function initializeThreeJS(boxDataList){
+
+
+    // Remove existing scene if it exists
+    if (renderer) {
+      renderer.dispose(); // Dispose of WebGL context
+      document.getElementById("threejs-container").innerHTML = ""; // Clear container
+    }
+
+
+
 
   //setup
   const scene = new THREE.Scene();
@@ -428,6 +453,8 @@ function initializeThreeJS(boxDataList){
   document.getElementById('threejs-container').appendChild(renderer.domElement);
   const rollButtonsContainer = document.getElementById('roll-buttons-container');
   document.getElementById('threejs-container').appendChild(rollButtonsContainer);
+
+  
 
   //light
   const ambientLight = new THREE.AmbientLight(0xffffff, 2); // Higher intensity for brighter illumination
@@ -748,8 +775,14 @@ document.getElementById('structure').addEventListener('click', () => {
     mode = structure;
     structurePos();
     changeMode()
+  
+    const textContainer = document.getElementById('description-container');
+    if (textContainer) {
+     textContainer.innerHTML = `<span style="color: #F7E0C0">hierarchies</span>: This mapping shows hierarchical structures by sorting entities in superordinate and subordinate elements.`;
+     textContainer.style.display = 'block'; // Ensure it's visible
+   }
+  
   });
-
 
 // relations button
 document.getElementById('relations').addEventListener('click', () => {
@@ -757,15 +790,32 @@ document.getElementById('relations').addEventListener('click', () => {
   mode = relations;
   changeMode()
   relationsPos();
+
+
+   const textContainer = document.getElementById('description-container');
+   if (textContainer) {
+   textContainer.innerHTML = `<span style="color: #F7E0C0">dynamics</span>: This mapping shows non-structural relationships of influence and change between entities.`;
+   textContainer.style.display = 'block'; // Ensure it's visible
+ }
+
+
   });
 
 
 // relations button
-document.getElementById('themes').addEventListener('click', () => {
-  activateButton(document.getElementById('themes'));
+document.getElementById('types').addEventListener('click', () => {
+  activateButton(document.getElementById('types'));
   mode = themes;
   themesPos();
   changeMode()
+
+   const textContainer = document.getElementById('description-container');
+   if (textContainer) {
+   textContainer.innerHTML = `<span style="color: #F7E0C0">types</span>: This mapping shows the types of entities.`;
+   textContainer.style.display = 'block'; // Ensure it's visible
+ }
+
+
   });
 
 //latent button
@@ -774,6 +824,15 @@ document.getElementById('latent').addEventListener('click', () => {
   latentPos();
   mode = latent;
   changeMode()
+
+
+  const textContainer = document.getElementById('description-container');
+  if (textContainer) {
+   textContainer.innerHTML = `<span style="color: #F7E0C0">latent space</span>: This mapping combines the parameters of the other mappings and therefore shows overall similarity of entities in a latent space.`;
+   textContainer.style.display = 'block'; // Ensure it's visible
+ }
+
+
   });
 
 
@@ -782,6 +841,15 @@ document.getElementById('latent').addEventListener('click', () => {
     sequencePos();
     mode = sequence;
     changeMode()
+
+
+    const textContainer = document.getElementById('description-container');
+    if (textContainer) {
+     textContainer.innerHTML = `<span style="color: #F7E0C0">sequence</span>: This mapping shows sequential orders of entities.`;
+     textContainer.style.display = 'block'; // Ensure it's visible
+   }
+
+
     });
     
 
@@ -844,8 +912,13 @@ function onHover(cube) {
 
    const textContainer = document.getElementById('description-container');
 
+   let colC = `#${cube.userData.colour.toString(16).padStart(6, '0')}`;
+   if (colC === '#ffffff') { 
+       colC = '#F7E0C0';
+   }
+
    if (textContainer) {
-    textContainer.innerHTML = `<span style="color: ${cube.userData.colour}">${cube.userData.name}</span>: ${cube.userData.description}`;
+    textContainer.innerHTML = `<span style="color: ${colC}">${cube.userData.name}</span>: ${cube.userData.description}`;
     textContainer.style.display = 'block'; // Ensure it's visible
 
   }
@@ -881,9 +954,20 @@ function onHover(cube) {
         }
           const descriptionElement = document.createElement('div');
 
-        descriptionElement.innerHTML = `<span style="color: ${cube.userData.colour}">${cube.userData.name}</span>, <span style="color: ${entity.userData.colour}">${entity.userData.name}</span>: ${description}`;
+
+          let colC = `#${cube.userData.colour.toString(16).padStart(6, '0')}`;
+          if (colC === '#ffffff') { 
+              colC = '#F7E0C0';
+          }
+          let colE = `#${entity.userData.colour.toString(16).padStart(6, '0')}`;
+          if (colE === '#ffffff') { 
+            colE = '#F7E0C0';
+          }
+
+
+        descriptionElement.innerHTML = `<span style="color: ${colC}">${cube.userData.name}</span>, <span style="color: ${colE}">${entity.userData.name}</span>: ${description}`;
       
-      
+        cube.material.color.getHex()
         textContainer.appendChild(descriptionElement);
       }
       });
@@ -941,10 +1025,17 @@ function onHover(cube) {
 
     const textContainer = document.getElementById('description-container');
   
+
+    let colC = `#${cube.userData.colour.toString(16).padStart(6, '0')}`;
+    if (colC === '#ffffff') { 
+        colC = '#F7E0C0';
+    }
+
+
     if (textContainer) {
       textContainer.innerHTML = '';      
       const descriptionElement = document.createElement('div');
-      descriptionElement.innerHTML = `<span style="color: ${cube.userData.colour}">${cube.userData.status}`;
+      descriptionElement.innerHTML = `<span style="color: ${colC}">${cube.userData.status}`;
       textContainer.appendChild(descriptionElement);
       textContainer.style.display = 'block';
     }
@@ -1261,8 +1352,8 @@ function manNavigation() {
   });
 };
 
-function createConstantLines(startCube, endCube, color = white) {
-  const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.2, depthWrite: false });
+function createConstantLines(startCube, endCube, color = 0xaeaeae) {
+  const material = new THREE.LineBasicMaterial({ color, transparent: false, opacity: 0.2, depthWrite: false});
   const geometry = new THREE.BufferGeometry().setFromPoints([
     startCube.position.clone(),
     endCube.position.clone()
@@ -1728,7 +1819,7 @@ function easeOutBoxes(cube) {
 
 // hovering
 function createLine(startCube, endCube, color = hoverColor) {
-  const material = new THREE.LineBasicMaterial({ color, linewidth: 7, opacity: 1,  depthWrite: false, });
+  const material = new THREE.LineBasicMaterial({ color, linewidth: 3, opacity: 1,  depthWrite: false, });
   const geometry = new THREE.BufferGeometry().setFromPoints([
     startCube.position.clone(),
     endCube.position.clone()

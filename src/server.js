@@ -12,7 +12,7 @@ import natural from 'natural';
 import compromise from 'compromise';
 
 
-const { JaroWinklerDistance } = natural;
+let { JaroWinklerDistance } = natural;
 
 //config
     dotenv.config();
@@ -30,7 +30,7 @@ const { JaroWinklerDistance } = natural;
 
 
 // Preprocess text
-    const preprocessText = (text) => {
+    let preprocessText = (text) => {
       console.log("Step 1: Preprocessing text...");
       return text.replace(/\s+/g, ' ').trim();
     };
@@ -141,7 +141,7 @@ const fourthPrompt = (summaryText, entities) => {
     try {
       console.log("summarize ...");
       
-      const response = await axios.post('http://localhost:11434/api/generate', {
+      let response = await axios.post('http://localhost:11434/api/generate', {
         model: 'deepseek-r1:7b', // deepseek-r1:7b
         prompt: firstPrompt(text, inputWord),
         stream: false,
@@ -150,7 +150,7 @@ const fourthPrompt = (summaryText, entities) => {
   
 
       let answer = response.data.response
-      const cleanedSummary = answer.replace(/<think>[\s\S]*?<\/think>/, '').trim();
+      let cleanedSummary = answer.replace(/<think>[\s\S]*?<\/think>/, '').trim();
   
       return cleanedSummary;
     } catch (error) {
@@ -166,7 +166,7 @@ const fourthPrompt = (summaryText, entities) => {
     console.log("entities ...");
 
     try {      
-        const response = await axios.post('http://localhost:11434/api/generate', {
+        let response = await axios.post('http://localhost:11434/api/generate', {
             model: 'llama3.1:8b',
             prompt: secondPrompt(text),
             stream: false,
@@ -184,7 +184,7 @@ const fourthPrompt = (summaryText, entities) => {
 
 
         try {
-            const cleanedJson = extractJsonUsingRegex(response.data.response);
+            let cleanedJson = extractJsonUsingRegex(response.data.response);
             if (!cleanedJson) {
                 throw new Error("Extracted JSON is empty or invalid.");
             }
@@ -206,14 +206,14 @@ async function parents(text, ent, attempts = 3) {
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
       try {
-          const response = await axios.post('http://localhost:11434/api/generate', {
+          let response = await axios.post('http://localhost:11434/api/generate', {
               model: 'llama3.1:8b',
               prompt: thirdPrompt(text, ent),
               stream: false,
               temperature: 0.1
           });
 
-          const cleanedFinal = extractJsonUsingRegex(response.data.response);
+          let cleanedFinal = extractJsonUsingRegex(response.data.response);
           
           if (cleanedFinal) {
               return cleanedFinal; // Return valid JSON
@@ -235,14 +235,14 @@ async function sequences(text, ent, attempts = 3) {
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
       try {
-          const response = await axios.post('http://localhost:11434/api/generate', {
+          let response = await axios.post('http://localhost:11434/api/generate', {
               model: 'llama3.1:8b',
               prompt: fourthPrompt(text, ent),
               stream: false,
               temperature: 0.1
           });
 
-          const cleanedFinal = extractJsonUsingRegex(response.data.response);
+          let cleanedFinal = extractJsonUsingRegex(response.data.response);
           
           if (cleanedFinal) {
               return cleanedFinal; // Return valid JSON
@@ -270,9 +270,9 @@ function extractJsonUsingRegex(responseText) {
     return null;
   }
 
-  const jsonMatch = responseText.match(/```json([\s\S]*?)```/);
+  let jsonMatch = responseText.match(/```json([\s\S]*?)```/);
 if (jsonMatch) {
-    const jsonString = jsonMatch[1].trim();
+    let jsonString = jsonMatch[1].trim();
     try {
         return JSON.parse(jsonString);
     } catch (error) {
@@ -296,14 +296,14 @@ if (jsonMatch) {
 // synonym handling
 
 // Process and normalize entities
-const normalizeEntityName = (name) => {
+let normalizeEntityName = (name) => {
   return pluralize.singular(name.toLowerCase());
 };
 
 // Fuzzy matching function
 function findSimilarEntity(name, entityNames){
   const threshold = 0.8; // Adjust based on similarity needs
-  const nameLC = name.toLowerCase();
+  let nameLC = name.toLowerCase();
   return [...entityNames].find(existingName =>
     JaroWinklerDistance(nameLC, existingName.toLowerCase()) >= threshold
   );
@@ -327,7 +327,7 @@ app.post('/process-text', async (req, res) => {
   console.log(`New request received at ${new Date().toISOString()}`);
 
   try {
-    const { text, selectedInput } = req.body;
+    let { text, selectedInput } = req.body;
     if (!text || !selectedInput) {
       return res.status(400).json({ error: 'Text and Input Word are required' });
     }
@@ -337,7 +337,7 @@ app.post('/process-text', async (req, res) => {
     console.log("input word: ", selectedInput);
 
 //summarize
-    const summary = await summarize(cleanedText, selectedInput);
+    let summary = await summarize(cleanedText, selectedInput);
     console.log("Summary:", summary);
 
 //extract entities
@@ -353,7 +353,7 @@ let normalizedEntities = extractedEntities.map(entity => {
   entity.name = entity.name.toLowerCase(); // Lowercase the entity name
 
   // Create a set of all entity names for lookup
-  const entityNames = new Set(extractedEntities.map(entity => entity.name.toLowerCase()));
+  let entityNames = new Set(extractedEntities.map(entity => entity.name.toLowerCase()));
 
   // Normalize relation names to lowercase
   entity.relations = entity.relations.map(relation => {
@@ -387,13 +387,14 @@ console.log("normalised", normalizedEntities)
 
 
 // add relations
-    const entityNamesRel = new Set(normalizedEntities.map(e => e.name)); // Keep track of added entities
+    let entityNamesRel = new Set(normalizedEntities.map(e => e.name)); // Keep track of added entities
 
     normalizedEntities.forEach(entity => {
         entity.relations.forEach(relation => {
-            const [relationName, relationDescription] = relation; // Extract name & description
+            let [relationName, relationDescription] = relation; // Extract name & description
 
-            let normalisedRelName = relationName.toLowerCase(); 
+            let normalisedRelName = relationName.toLowerCase();
+            relationName = normalisedRelName;
 
             if (normalisedRelName && !entityNamesRel.has(normalisedRelName)) {
               normalizedEntities.push({
@@ -417,17 +418,17 @@ console.log("normalised", normalizedEntities)
 
 
 //parents
-    const parent = await parents(summary, normalizedEntities);
+    let parent = await parents(summary, normalizedEntities);
 
 
 //sequences
-    const sequence = await sequences(summary, normalizedEntities);
+    let sequence = await sequences(summary, normalizedEntities);
 
 //merge
     let normalizedParents =parent.map(relationship => {
       return relationship.map(entity => {
 
-      const entityNamesParents = new Set(normalizedEntities.map(entity => entity.name.toLowerCase()));
+      let entityNamesParents = new Set(normalizedEntities.map(entity => entity.name.toLowerCase()));
 
           // Lowercase the relation name to ensure uniformity
           let lowerCase = entity.toLowerCase();
@@ -455,7 +456,7 @@ console.log("normalised", normalizedEntities)
     let normalizedSequences = sequence.map(relationship => {
       return relationship.map(entity => {
      
-      const entityNamesSeq = new Set(normalizedEntities.map(entity => entity.name.toLowerCase()));
+      let entityNamesSeq = new Set(normalizedEntities.map(entity => entity.name.toLowerCase()));
 
           let lowerCase = entity.toLowerCase();
           let singular = singularize(entity);
@@ -481,13 +482,13 @@ console.log("normalised", normalizedEntities)
 
 
 let mergedEntities = normalizedEntities.map(entity => {
-  const entityNameMerge = entity.name.toLowerCase(); // Normalize the entity name
+  let entityNameMerge = entity.name.toLowerCase(); // Normalize the entity name
 
   // Normalize and find parents: entities listed before the current entity in parent relationships
   entity.parents = normalizedParents
   .filter(relation => relation.includes(entityNameMerge)) // Find parent arrays containing the entity
   .map(relation => {
-    const index = relation.indexOf(entityNameMerge);
+    let index = relation.indexOf(entityNameMerge);
     return index > 0 ? relation[index - 1] : null; // Get the entity before
   })
   .filter(Boolean); // Remove null values
@@ -498,7 +499,7 @@ let mergedEntities = normalizedEntities.map(entity => {
 entity.sequence = normalizedSequences
   .filter(seq => seq.includes(entityNameMerge)) // Find sequences containing the entity
   .map(seq => {
-    const index = seq.indexOf(entityNameMerge);
+    let index = seq.indexOf(entityNameMerge);
     return index < seq.length - 1 ? seq[index + 1] : null; // Get the entity after
   })
   .filter(Boolean);
