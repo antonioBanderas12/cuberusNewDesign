@@ -15,20 +15,23 @@ import { PCA } from 'ml-pca';
 import compromise from 'compromise';
 
 
+// Global variables
+let camera, renderer, scene, controls, originalAspectRatio;
+let isResizing = false;
+
+let boxes = [];
+let boundings = [];
+let hoveredCube = null;
+let clickedCube = null;
+let currentGroup = null;
+
 
 //resizing
-
-
 const threejsContainer = document.getElementById('threejs-container');
 const descriptionContainer = document.getElementById('description-container');
-
-// ResizeObserver to monitor changes in the threejs container's size
 const resizeObserver = new ResizeObserver(() => {
-  // Set the width of the description container to match the three.js container
   descriptionContainer.style.width = `${threejsContainer.offsetWidth * 0.8}px`; // Adjust width to 80% of threejsContainer
 });
-
-// Start observing the three.js container
 resizeObserver.observe(threejsContainer);
 
 
@@ -37,8 +40,6 @@ const resizer = document.getElementById('resizer');
 const leftPanel = document.getElementById('pdf-container');
 const rightPanel = document.getElementById('threejs-container');
 const inputWord = document.getElementById('selectedInput');    
-let camera, renderer, originalAspectRatio;
-let isResizing = false;
 
 resizer.addEventListener('mousedown', (event) => {
   isResizing = true;
@@ -396,7 +397,8 @@ async function initializePage() {
   const spinner = document.getElementById("loading-spinner");
   spinner.style.display = "block";
 
-  const boxDataList = await fetchSummary();
+  let boxDataList = null;
+  boxDataList = await fetchSummary();
 
   if (boxDataList) {
     console.log("Summary data:", boxDataList);
@@ -409,6 +411,63 @@ async function initializePage() {
 
 
 
+function clearContainer() {
+  const container = document.getElementById('threejs-container');
+
+  // Ensure the container exists before clearing
+  if (container) {
+    // Remove all child elements from the container
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
+    }
+  }
+}
+
+
+
+function resetThreeScene() {
+  if (!scene) return;
+
+  // Dispose of all objects in the scene
+  while (scene.children.length > 0) {
+    const object = scene.children[0];
+
+    if (object instanceof THREE.Mesh) {
+      if (object.geometry) {
+        object.geometry.dispose();
+      }
+      if (object.material) {
+        if (Array.isArray(object.material)) {
+          object.material.forEach(material => material.dispose());
+        } else {
+          object.material.dispose();
+        }
+      }
+    }
+
+    scene.remove(object);
+  }
+
+  // Dispose renderer properly
+  if (renderer) {
+    renderer.dispose();
+    if (renderer.domElement) {
+      renderer.domElement.remove(); // Remove canvas from the DOM
+    }
+    renderer = null;
+  }
+
+  // Reset essential elements
+  camera = null;
+  scene = new THREE.Scene(); // Ensure new scene is created
+
+  // Clear stored arrays and variables
+  if (typeof boxes !== "undefined") boxes.length = 0;
+  if (typeof boundings !== "undefined") boundings.length = 0;
+  hoveredCube = null;
+  clickedCube = null;
+  currentGroup = null;
+}
 
 
 
@@ -416,18 +475,8 @@ async function initializePage() {
   //three.js logic
 function initializeThreeJS(boxDataList){
 
-
-    // Remove existing scene if it exists
-    if (renderer) {
-      renderer.dispose(); // Dispose of WebGL context
-      document.getElementById("threejs-container").innerHTML = ""; // Clear container
-    }
-
-
-
-
   //setup
-  const scene = new THREE.Scene();
+  scene = new THREE.Scene();
 
   const width = container.clientWidth;
   const height = container.clientHeight;
@@ -449,11 +498,11 @@ function initializeThreeJS(boxDataList){
   renderer.domElement.style.left = "50%";
   renderer.domElement.style.transform = "translate(-50%, -50%)";
 
-  //add buttons again
   document.getElementById('threejs-container').appendChild(renderer.domElement);
-  const rollButtonsContainer = document.getElementById('roll-buttons-container');
-  document.getElementById('threejs-container').appendChild(rollButtonsContainer);
 
+  // Add buttons again
+  // const rollButtonsContainer = document.getElementById('roll-buttons-container');
+  // document.getElementById('threejs-container').appendChild(rollButtonsContainer);
   
 
   //light
@@ -464,13 +513,13 @@ function initializeThreeJS(boxDataList){
   scene.add(hemisphereLight);
 
 
-
   //Variables
   const boxSize = 10;
   let targetPosition = new THREE.Vector3();
   let currentLookAt = new THREE.Vector3(0, 0, 0);  // Camera focus point
-  const boxes = [];
-  let hoveredCube = null;
+
+  // const boxes = [];
+  // let hoveredCube = null;
   let structure = 0;
   let relations = 1;
   let themes = 2;
@@ -481,10 +530,9 @@ function initializeThreeJS(boxDataList){
   let mode = structure;
   let explore = false;
 
-
-  let boundings = [];
-  let clickedCube = null;
-  let currentGroup = null;
+  // let boundings = [];
+  // let clickedCube = null;
+  // let currentGroup = null;
 
     //buttons
     const structureButton = document.getElementById("structure");
@@ -859,6 +907,11 @@ document.getElementById('latent').addEventListener('click', () => {
 //mousemove and hover
 function onMouseMove(event) {
 
+  if (!renderer || !renderer.domElement) {
+    console.warn('Renderer or its domElement is not initialized yet.');
+    return;
+  }
+
   const rect = renderer.domElement.getBoundingClientRect();
   mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -1197,6 +1250,13 @@ function manNavigation() {
   
   
   const canvas = document.querySelector('#threejs-container canvas'); // Target the canvas inside the threejs-container
+
+
+    // Check if the canvas exists
+    if (!canvas) {
+      console.error("Canvas not found! Ensure the Three.js canvas is created before calling manNavigation.");
+      return;
+    }
   
   canvas.addEventListener('wheel', (event) => {
     if (mode === structure && !explore) {
@@ -3721,14 +3781,17 @@ console.log("podMax", posMax);
   
 
   function animate() {
-    requestAnimationFrame(animate);
-    if(mode === structure && explore){ //mode === structure &&
-      camera.position.lerp(targetPosition, 0.05);
+    
+    if (renderer && scene && camera) {
+      requestAnimationFrame(animate);
+      if(mode === structure && explore){ //mode === structure &&
+        camera.position.lerp(targetPosition, 0.05);
+      }
+
+      renderer.render(scene, camera);
+    } else {
+      console.warn('Three.js scene, camera, or renderer is not initialized.');
     }
-
-    boxes.filter(cube => cube.userData.name === "cA").forEach(cube => {cube.visible = false});
-
-    renderer.render(scene, camera);
   }
   animate();
 
@@ -3880,6 +3943,28 @@ setTimeout(() => {
 document.getElementById("summary").addEventListener("click", async function () {
   try {
     console.log("Summarization started...");
+    resetThreeScene();
+    // clearContainer();
+
+    // if (!rollButtonsContainer) {
+    //   const rollButtonsContainer = document.createElement('div');
+    //   rollButtonsContainer.id = 'roll-buttons-container';
+    //   // Add your content to rollButtonsContainer if needed
+    // }
+    
+    // if (!summaryContainer) {
+    //   const summaryContainer = document.createElement('button');
+    //   summaryContainer.id = 'summary';
+    //   // Add your content to summaryContainer if needed
+    // }
+    
+    // // Append them after creation
+    // if (threejsContainer) {
+    //   threejsContainer.appendChild(rollButtonsContainer);
+    //   threejsContainer.appendChild(summaryContainer);
+    // }
+
+
     await initializePage();
     console.log("Summarization complete.");
   } catch (error) {
