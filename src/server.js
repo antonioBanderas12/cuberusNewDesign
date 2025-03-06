@@ -218,6 +218,7 @@ async function parents(text, ent, attempts = 3) {
           if (cleanedFinal) {
               return cleanedFinal; // Return valid JSON
           }
+          console.log("parents:", cleanedFinal);
 
           console.warn(`Failed to extract valid JSON. Attempt ${attempt} of ${attempts}`);
           await delay(500);
@@ -247,6 +248,8 @@ async function sequences(text, ent, attempts = 3) {
           if (cleanedFinal) {
               return cleanedFinal; // Return valid JSON
           }
+
+          console.log("sequence:", cleanedFinal);
 
           console.warn(`Failed to extract valid JSON. Attempt ${attempt} of ${attempts}`);
           await delay(500);
@@ -426,6 +429,7 @@ console.log("normalised", normalizedEntities)
 
 //merge
     let normalizedParents =parent.map(relationship => {
+      if(relationship){
       return relationship.map(entity => {
 
       let entityNamesParents = new Set(normalizedEntities.map(entity => entity.name.toLowerCase()));
@@ -448,12 +452,14 @@ console.log("normalised", normalizedEntities)
 
           return entity; // Return the original entity if no match is found
         });
+      }
       });
 
     console.log("normalizedParents:", normalizedParents);
 
 
     let normalizedSequences = sequence.map(relationship => {
+      if(relationship){
       return relationship.map(entity => {
      
       let entityNamesSeq = new Set(normalizedEntities.map(entity => entity.name.toLowerCase()));
@@ -473,6 +479,7 @@ console.log("normalised", normalizedEntities)
           }
           return entity; // Return the original entity if no match is found
         });
+      }
       });
 
     console.log("normalizedSequences:", normalizedSequences);
