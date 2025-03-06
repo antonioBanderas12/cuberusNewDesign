@@ -2462,6 +2462,7 @@ function relationsExplorePos() {
 
 
 
+
 function themesPos() {
   setTimeout(() => {
 
@@ -2573,6 +2574,123 @@ function themesPos() {
     updateBoundingBoxes();
   }, 500);
 }
+
+
+
+
+
+
+// function themesPos() {
+//   setTimeout(() => {
+
+//     boxes.forEach(cube => {
+//       cube.rotation.set(0, -Math.PI, 0);
+//       cube.userData.boundBox.rotation.set(0, -Math.PI, 0);
+//     });
+
+
+//     // Base constants
+//     const baseClusterSpacing = boxSize * 10; // Spacing between cluster centers
+//     const baseBoxSpread = boxSize * 7; // Initial spread within clusters
+//     const minClusterDistance = boxSize * 3; // Minimum distance between cluster centers
+//     const faceZ = -bigCubeSize / 2;
+
+//     // Group cubes by status
+//     const statusClusters = {};
+//     boxes.forEach(cube => {     //themesBoxes?????
+//       const status = cube.userData.status || "default";
+//       if (!statusClusters[status]) statusClusters[status] = [];
+//       statusClusters[status].push(cube);
+//     });
+
+//     const statusKeys = Object.keys(statusClusters);
+
+//     // Initialize cluster centers
+//     const clusterCenters = statusKeys.map((status, index) => {
+//       const angle = (index / statusKeys.length) * Math.PI * 2;
+//       const radius = baseClusterSpacing * Math.sqrt(statusKeys.length);
+//       return new THREE.Vector3(
+//         Math.cos(angle) * radius,
+//         Math.sin(angle) * radius,
+//         faceZ
+//       );
+//     });
+
+//     // Force-directed placement of cluster centers
+//     for (let iteration = 0; iteration < 100; iteration++) {
+//       statusKeys.forEach((status, i) => {
+//         let forceX = 0, forceY = 0;
+//         statusKeys.forEach((otherStatus, j) => {
+//           if (i !== j) {
+//             const dx = clusterCenters[i].x - clusterCenters[j].x;
+//             const dy = clusterCenters[i].y - clusterCenters[j].y;
+//             const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+//             const force = Math.max(0, minClusterDistance - distance) / distance;
+//             forceX += dx * force;
+//             forceY += dy * force;
+//           }
+//         });
+//         clusterCenters[i].x += forceX * 0.1;
+//         clusterCenters[i].y += forceY * 0.4;
+//       });
+//     }
+
+//     // Position cubes within clusters
+//     statusKeys.forEach((status, clusterIndex) => {
+//       const cubesInStatus = statusClusters[status];
+//       const clusterCenter = clusterCenters[clusterIndex];
+
+//       // Initialize positions within cluster
+//       cubesInStatus.forEach(cube => {
+//         cube.position.x = clusterCenter.x + (Math.random() - 0.5) * baseBoxSpread;
+//         cube.position.y = clusterCenter.y + (Math.random() - 0.5) * baseBoxSpread;
+//         cube.position.z = faceZ;
+//       });
+
+//       // Force-directed placement within cluster
+//       for (let iteration = 0; iteration < 50; iteration++) {
+//         cubesInStatus.forEach((cube, i) => {
+//           let forceX = 0, forceY = 0;
+          
+//           cubesInStatus.forEach((otherCube, j) => {
+//             if (i !== j) {
+//               const dx = cube.position.x - otherCube.position.x;
+//               const dy = cube.position.y - otherCube.position.y;
+//               const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+//               const force = (30 - distance) / distance;
+//               forceX += dx * force;
+//               forceY += dy * force;
+//             }
+//           });
+
+//           // Add a centering force
+//           forceX += (clusterCenter.x - cube.position.x) * 0.1;
+//           forceY += (clusterCenter.y - cube.position.y) * 0.1;
+
+//           cube.position.x += forceX * 0.05;
+//           cube.position.y += forceY * 0.05;
+//         });
+//       }
+
+//       // Animate final positions
+//       cubesInStatus.forEach(cube => {
+//         gsap.to(cube.position, {
+//           duration: 1,
+//           x: cube.position.x,
+//           y: cube.position.y,
+//           z: cube.position.z,
+//           ease: "power2.inOut",
+//           onUpdate: () => {
+//             cube.userData.boundBox.position.copy(cube.position);
+//           }
+//         });
+//       });
+//     });
+
+//     // Update bounding boxes and outlines
+//     updateBoundingBoxes();
+//   }, 500);
+// }
 
 
 
@@ -2711,38 +2829,39 @@ function sequencePos() {
 
 
 
-
     // Position subsequent objects with true alternating branching
     while (queue.length > 0) {
-        let { box, x, y, z } = queue.shift(); // Get the z position from queue
-        let nextX = x + xSpacing; // Move next boxes to the right
-        let branchCount = box.userData.sequence.length;
+      let { box, x, y, z } = queue.shift(); // Get the z position from queue
+      let nextX = x + xSpacing; // Move next boxes to the right
+      let branchCount = box.userData.sequence.length;
 
-        if (branchCount === 1) {
-            // Single continuation follows parent’s z position
-            let nextBox = box.userData.sequence[0];
-            if (!placed.has(nextBox)) {
-                destinationArray[nextBox.userData.name] = { x: nextX, y: y, z: z };
-                placed.add(nextBox);
-                queue.push({ box: nextBox, x: nextX, y: y, z: z });
-            }
-        } else {
-            // Multiple branches: alternate between above and below
-            let yDirection = 1; // Start with up movement
+      if (branchCount === 1) {
+          // Single continuation follows parent’s z position
+          let nextBox = box.userData.sequence[0];
+          if (!placed.has(nextBox)) {
+              destinationArray[nextBox.userData.name] = { x: nextX, y: y, z: z };
+              placed.add(nextBox);
+              queue.push({ box: nextBox, x: nextX, y: y, z: z });
+          }
+      } else {
+          // Multiple branches: alternate between above and below
+          let yDirection = 1; // Start with up movement
 
-            box.userData.sequence.forEach((nextBox, i) => {
-                if (!placed.has(nextBox)) {
-                    let newY = y + (yDirection * Math.ceil(i / 2) * ySpacing);
-                    yDirection *= -1; // Toggle direction (up/down)
+          box.userData.sequence.forEach((nextBox, i) => {
+              if (!placed.has(nextBox)) {
+                  let newY = y + (yDirection * Math.ceil(i / 2) * ySpacing);
+                  yDirection *= -1; // Toggle direction (up/down)
 
-                    // Keep the same z-position as parent
-                    destinationArray[nextBox.userData.name] = { x: nextX, y: newY, z: z };
-                    placed.add(nextBox);
-                    queue.push({ box: nextBox, x: nextX, y: newY, z: z });
-                }
-            });
-        }
-    }
+                  // Keep the same z-position as parent
+                  destinationArray[nextBox.userData.name] = { x: nextX, y: newY, z: z };
+                  placed.add(nextBox);
+                  queue.push({ box: nextBox, x: nextX, y: newY, z: z });
+              }
+          });
+      }
+  }
+
+
 
  let face = bigCubeSize / 2;
 
