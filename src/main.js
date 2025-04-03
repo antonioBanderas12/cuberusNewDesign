@@ -1115,14 +1115,6 @@ function onHover(cube) {
 
 
 // helpers
-// helpers
-// helpers
-// helpers
-// helpers
-// helpers
-// helpers
-// helperss
-// helpers
 
 
 
@@ -1195,13 +1187,6 @@ function tracePath(cube, visited = new Set()) {
       tracePath(parent, visited);
   });
 }
-
-
-
-
-
-
-
 
 
 
@@ -1987,33 +1972,6 @@ console.log(color)
 
 
 
-// function createOutline(cube, color = 0xF7E0C0) {
-//   if (cube && !cube.userData.outline) {
-//     const box = new THREE.Box3().setFromObject(cube);
-
-//     // Get the dimensions of the bounding box
-//     const size = new THREE.Vector3();
-//     box.getSize(size);
-
-//     // Create edges geometry for outline instead of a solid box
-//     const outlineGeometry = new THREE.EdgesGeometry(new THREE.BoxGeometry(size.x * 1.3, size.y * 1.3, size.z * 1.3));
-//     const outlineMaterial = new THREE.LineBasicMaterial({ color });
-
-//     const outlineMesh = new THREE.LineSegments(outlineGeometry, outlineMaterial);
-
-//     // Position it correctly
-//     outlineMesh.position.copy(cube.position);
-
-//     // Save the outline for later removal
-//     cube.userData.outline = outlineMesh;
-
-//     scene.add(outlineMesh);
-//   }
-// }
-
-
-
-
 
 function removeOutline(cube) {
   if (cube && cube.userData.outline) {
@@ -2051,27 +2009,6 @@ function removeHover(cube) {
     }
   });
 
-
-
-
-  // function removetracePath(cube) {
-  //   let parents = boxes.filter(child => child.userData.sequence.includes(cube));
-
-  //   if (parents.length === 0) {
-  //       return;
-  //   }
-
-  //   parents.forEach(parent => {
-  //     removeOutline(parent);
-  //     parent.material.color.set(parent.userData.colour);
-  //     removeLines(parent);
-
-  //       // Recursively trace the path further
-  //       removetracePath(parent);
-  //   });
-  // }
-
-  // removetracePath(cube);
 
 
 
@@ -2580,120 +2517,6 @@ function themesPos() {
 
 
 
-// function themesPos() {
-//   setTimeout(() => {
-
-//     boxes.forEach(cube => {
-//       cube.rotation.set(0, -Math.PI, 0);
-//       cube.userData.boundBox.rotation.set(0, -Math.PI, 0);
-//     });
-
-
-//     // Base constants
-//     const baseClusterSpacing = boxSize * 10; // Spacing between cluster centers
-//     const baseBoxSpread = boxSize * 7; // Initial spread within clusters
-//     const minClusterDistance = boxSize * 3; // Minimum distance between cluster centers
-//     const faceZ = -bigCubeSize / 2;
-
-//     // Group cubes by status
-//     const statusClusters = {};
-//     boxes.forEach(cube => {     //themesBoxes?????
-//       const status = cube.userData.status || "default";
-//       if (!statusClusters[status]) statusClusters[status] = [];
-//       statusClusters[status].push(cube);
-//     });
-
-//     const statusKeys = Object.keys(statusClusters);
-
-//     // Initialize cluster centers
-//     const clusterCenters = statusKeys.map((status, index) => {
-//       const angle = (index / statusKeys.length) * Math.PI * 2;
-//       const radius = baseClusterSpacing * Math.sqrt(statusKeys.length);
-//       return new THREE.Vector3(
-//         Math.cos(angle) * radius,
-//         Math.sin(angle) * radius,
-//         faceZ
-//       );
-//     });
-
-//     // Force-directed placement of cluster centers
-//     for (let iteration = 0; iteration < 100; iteration++) {
-//       statusKeys.forEach((status, i) => {
-//         let forceX = 0, forceY = 0;
-//         statusKeys.forEach((otherStatus, j) => {
-//           if (i !== j) {
-//             const dx = clusterCenters[i].x - clusterCenters[j].x;
-//             const dy = clusterCenters[i].y - clusterCenters[j].y;
-//             const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-//             const force = Math.max(0, minClusterDistance - distance) / distance;
-//             forceX += dx * force;
-//             forceY += dy * force;
-//           }
-//         });
-//         clusterCenters[i].x += forceX * 0.1;
-//         clusterCenters[i].y += forceY * 0.4;
-//       });
-//     }
-
-//     // Position cubes within clusters
-//     statusKeys.forEach((status, clusterIndex) => {
-//       const cubesInStatus = statusClusters[status];
-//       const clusterCenter = clusterCenters[clusterIndex];
-
-//       // Initialize positions within cluster
-//       cubesInStatus.forEach(cube => {
-//         cube.position.x = clusterCenter.x + (Math.random() - 0.5) * baseBoxSpread;
-//         cube.position.y = clusterCenter.y + (Math.random() - 0.5) * baseBoxSpread;
-//         cube.position.z = faceZ;
-//       });
-
-//       // Force-directed placement within cluster
-//       for (let iteration = 0; iteration < 50; iteration++) {
-//         cubesInStatus.forEach((cube, i) => {
-//           let forceX = 0, forceY = 0;
-          
-//           cubesInStatus.forEach((otherCube, j) => {
-//             if (i !== j) {
-//               const dx = cube.position.x - otherCube.position.x;
-//               const dy = cube.position.y - otherCube.position.y;
-//               const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-//               const force = (30 - distance) / distance;
-//               forceX += dx * force;
-//               forceY += dy * force;
-//             }
-//           });
-
-//           // Add a centering force
-//           forceX += (clusterCenter.x - cube.position.x) * 0.1;
-//           forceY += (clusterCenter.y - cube.position.y) * 0.1;
-
-//           cube.position.x += forceX * 0.05;
-//           cube.position.y += forceY * 0.05;
-//         });
-//       }
-
-//       // Animate final positions
-//       cubesInStatus.forEach(cube => {
-//         gsap.to(cube.position, {
-//           duration: 1,
-//           x: cube.position.x,
-//           y: cube.position.y,
-//           z: cube.position.z,
-//           ease: "power2.inOut",
-//           onUpdate: () => {
-//             cube.userData.boundBox.position.copy(cube.position);
-//           }
-//         });
-//       });
-//     });
-
-//     // Update bounding boxes and outlines
-//     updateBoundingBoxes();
-//   }, 500);
-// }
-
-
-
 function latentPos() {
   setTimeout(() => {
     
@@ -2914,145 +2737,6 @@ function sequencePos() {
 
   }, 500);
 }
-
-
-
-
-
-
-
-// function sequencePos() {
-
-//   setTimeout(() => {
-//     // Fix rotations for all boxes
-//     boxes.forEach(cube => {
-//       cube.rotation.set(-Math.PI / 2, 0, 0);
-//       cube.userData.boundBox.rotation.set(-Math.PI / 2, 0, 0);
-//     });
-
-//     // Find all referenced boxes
-//     let referencedBoxes = new Set();
-//     boxes.forEach(box => {
-//       box.userData.sequence.forEach(seq => referencedBoxes.add(seq));
-//     });
-
-//     let seqBoxes = boxes.filter(box => box.userData.sequence.length > 0);
-//     // Identify start objects (not referenced anywhere)
-//     let startObjects = seqBoxes.filter(box => !referencedBoxes.has(box));
-
-//     // Positioning parameters
-//     let xStart = -bigCubeSize / 3;  // Start X position
-//     let yFixed = bigCubeSize / 2;   // Base Y position
-//     let zStart = -bigCubeSize / 2;  // Start Z position
-//     let xSpacing = boxSize * 35;  // Horizontal distance
-//     let ySpacing = boxSize * 10;   // Vertical distance for branches
-//     let rowSpacing = boxSize * 10; // Space between independent sequences
-
-//     let destinationArray = {}; // Store target positions
-//     let placed = new Set();    // Track placed boxes
-//     let queue = [];            // Queue for BFS traversal
-
-//     // Position start objects in a vertical row
-//     startObjects.forEach((box, index) => {
-//         let xPos = xStart;
-//         let zPos = zStart + index * rowSpacing; // Each sequence starts on a different Z line
-//         destinationArray[box.userData.name] = { x: xPos, y: yFixed, z: zPos };
-//         placed.add(box);
-//         queue.push({ box, x: xPos, y: yFixed, z: zPos }); // Store zPos in queue
-//     });
-
-
-
-
-
-//     // Position subsequent objects with true alternating branching
-//     while (queue.length > 0) {
-//         let { box, x, y, z } = queue.shift(); // Get the z position from queue
-//         let nextX = x + xSpacing; // Move next boxes to the right
-//         let branchCount = box.userData.sequence.length;
-
-//         if (branchCount === 1) {
-//             // Single continuation follows parent’s z position
-//             let nextBox = box.userData.sequence[0];
-//             if (!placed.has(nextBox)) {
-//                 destinationArray[nextBox.userData.name] = { x: nextX, y: y, z: z };
-//                 placed.add(nextBox);
-//                 queue.push({ box: nextBox, x: nextX, y: y, z: z });
-//             }
-//         } else {
-//             // Multiple branches: alternate between above and below
-//             let yDirection = 1; // Start with up movement
-
-//             box.userData.sequence.forEach((nextBox, i) => {
-//                 if (!placed.has(nextBox)) {
-//                     let newY = y + (yDirection * Math.ceil(i / 2) * ySpacing);
-//                     yDirection *= -1; // Toggle direction (up/down)
-
-//                     // Keep the same z-position as parent
-//                     destinationArray[nextBox.userData.name] = { x: nextX, y: newY, z: z };
-//                     placed.add(nextBox);
-//                     queue.push({ box: nextBox, x: nextX, y: newY, z: z });
-//                 }
-//             });
-//         }
-//     }
-
-//  let face = bigCubeSize / 2;
-
-
-
-
-
-
-
-
-
-//     // First pass: Calculate max X positions
-//     let maxXPositions = {};
-//     boxes.forEach(cube => {
-//       let pos = destinationArray[cube.userData.name];
-//       if (pos) {
-//         let refArray = boxes.filter(c => c.userData.sequence.includes(cube))
-//                             .map(c => destinationArray[c.userData.name]);
-        
-//         let maxX = Math.max(-1000, ...refArray.map(posRef => posRef ? posRef.x : 0));
-//         maxXPositions[cube.userData.name] = maxX + xSpacing;
-
-//       }
-//     });
-
-
-//     boxes.forEach(cube => {
-//       let pos = destinationArray[cube.userData.name];
-      
-//       if (pos) {
-//         if (pos.x > 0){
-//         pos.x = maxXPositions[cube.userData.name];
-//         }
-
-
-//         gsap.to(cube.position, {
-//           duration: 1,
-//           x: pos.x,
-//           y: face, // Adjust for scene positioning
-//           z: pos.z + pos.y,
-//           ease: "power2.inOut",
-//           onUpdate: () => {
-//             cube.userData.boundBox.position.copy(cube.position);
-//           }
-//         });
-//       }
-//     });
-
-
-
-//   }, 500);
-// }
-
-
-
-
-
 
 
 
@@ -4064,24 +3748,6 @@ document.getElementById("summary").addEventListener("click", async function () {
     console.log("Summarization started...");
     resetThreeScene();
     // clearContainer();
-
-    // if (!rollButtonsContainer) {
-    //   const rollButtonsContainer = document.createElement('div');
-    //   rollButtonsContainer.id = 'roll-buttons-container';
-    //   // Add your content to rollButtonsContainer if needed
-    // }
-    
-    // if (!summaryContainer) {
-    //   const summaryContainer = document.createElement('button');
-    //   summaryContainer.id = 'summary';
-    //   // Add your content to summaryContainer if needed
-    // }
-    
-    // // Append them after creation
-    // if (threejsContainer) {
-    //   threejsContainer.appendChild(rollButtonsContainer);
-    //   threejsContainer.appendChild(summaryContainer);
-    // }
 
 
     await initializePage();
